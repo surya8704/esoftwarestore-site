@@ -250,7 +250,7 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        <div className={`mt-4 grid gap-4 sm:mt-5 sm:gap-6 ${gridClass}`}>
+        <div className={`mt-4 product-grid grid gap-3 sm:mt-5 sm:gap-6 ${gridClass}`}>
           {paginated.map((product, index) => (
             <ProductCard
               key={product.id ?? product.slug ?? `product-${index}`}

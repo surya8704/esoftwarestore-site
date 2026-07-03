@@ -245,7 +245,7 @@ export default function ProductPage() {
         {related.length > 0 ? (
           <section className="mt-16 border-t border-store pt-10">
             <h2 className="text-xl font-extrabold text-store-heading">Related products</h2>
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
+            <div className="mt-6 product-grid grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
               {related.map((p) => (
                 <ProductCard
                   key={p.id}

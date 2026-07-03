@@ -11,9 +11,9 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
   const stars = Math.round(product.rating ?? 0)
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[110] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button type="button" className="absolute inset-0 bg-[var(--store-overlay)] backdrop-blur-sm" onClick={onClose} aria-label="Close" />
-      <div className="relative max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-store-surface shadow-2xl animate-fade-in-up">
+      <div className="relative max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-store-surface shadow-2xl animate-fade-in-up sm:max-h-[90vh] sm:overflow-hidden sm:rounded-2xl">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-store-surface/90 p-2 shadow-md backdrop-blur hover:bg-store-hover transition-colors" aria-label="Close">
           <X size={18} />
         </button>
@@ -50,7 +50,7 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
 
             <p className="mt-4 flex-1 text-sm leading-relaxed text-store-muted">{product.description}</p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button type="button" onClick={() => onAddToCart(product)} className="btn-store-primary">
                 <ShoppingCart size={16} /> Add to cart
               </button>
