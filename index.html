@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Professional software store for Microsoft licenses, productivity tools, and database products."
+    />
+    <title>eSoftware Store | Digital Software Marketplace</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="./index.html" class="brand">eSoftware Store</a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="#catalog">Catalog</a>
+          <a href="#why-us">Why Us</a>
+          <a href="./admin.html" class="button button-small">Admin Panel</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy reveal">
+            <p class="eyebrow">Trusted Digital License Supplier</p>
+            <h1>Secure genuine software keys for personal and business use.</h1>
+            <p>
+              Browse premium Microsoft products with instant delivery, transparent
+              pricing, and dedicated support.
+            </p>
+            <div class="hero-actions">
+              <a href="#catalog" class="button">Shop Now</a>
+              <a href="./admin.html" class="button button-ghost">Manage Products</a>
+            </div>
+          </div>
+          <aside class="hero-card reveal">
+            <h2>Why customers choose us</h2>
+            <ul>
+              <li>Verified licenses and instant digital delivery</li>
+              <li>Business-ready products and competitive pricing</li>
+              <li>Secure checkout and responsive customer support</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section id="why-us" class="trust-section container reveal">
+        <article>
+          <h3>Enterprise Quality</h3>
+          <p>Software that scales from home users to growing business teams.</p>
+        </article>
+        <article>
+          <h3>Value Pricing</h3>
+          <p>Clear original and discounted pricing on every listed product.</p>
+        </article>
+        <article>
+          <h3>Fast Access</h3>
+          <p>Get product details instantly and deploy licenses quickly.</p>
+        </article>
+      </section>
+
+      <section id="catalog" class="catalog container">
+        <div class="catalog-top reveal">
+          <h2>Product Catalog</h2>
+          <div class="catalog-controls">
+            <input id="search" type="search" placeholder="Search by product name..." />
+            <select id="sort">
+              <option value="featured">Sort: Featured</option>
+              <option value="lowToHigh">Price: Low to High</option>
+              <option value="highToLow">Price: High to Low</option>
+              <option value="discount">Highest Discount</option>
+            </select>
+          </div>
+        </div>
+        <div id="product-grid" class="product-grid" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <p>2026 eSoftware Store. All rights reserved.</p>
+        <a href="./admin.html">Open Admin Panel</a>
+      </div>
+    </footer>
+
+    <script src="./data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

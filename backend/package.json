@@ -1,0 +1,33 @@
+{
+  "name": "esoftwarestore-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "fetch:products": "node scripts/fetch-esoftwarestore-products.js",
+    "fetch:guides": "node scripts/fetch-esoftwarestore-posts.js",
+    "import:products": "node scripts/import-products.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/multipart": "^10.0.0",
+    "@fastify/sensible": "^6.0.3",
+    "@fastify/static": "^9.1.3",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.44.7",
+    "fastify": "^5.6.1",
+    "mongoose": "^8.19.3",
+    "mysql2": "^3.15.2",
+    "razorpay": "^2.9.6",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.5",
+    "mongodb-memory-server": "^11.2.0"
+  }
+}

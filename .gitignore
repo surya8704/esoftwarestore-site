@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Build output
+frontend/dist/
+dist/
+
+# Uploads & runtime
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Vercel
+frontend/.vercel/
+.vercel/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS & editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test / cache
+coverage/
+.cache/
+*.tsbuildinfo

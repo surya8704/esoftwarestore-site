@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Admin panel to manage software store products and pricing."
+    />
+    <title>Admin Panel | eSoftware Store</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="./index.html" class="brand">eSoftware Store Admin</a>
+        <nav class="main-nav" aria-label="Admin navigation">
+          <a href="./index.html">View Store</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container admin-layout">
+      <section class="admin-panel">
+        <h1>Product Management</h1>
+        <p>Add or update products with full pricing and media details.</p>
+
+        <form id="product-form" class="admin-form">
+          <input type="hidden" id="product-id" />
+
+          <label for="title">
+            Product Title
+            <input id="title" name="title" required />
+          </label>
+
+          <label for="price">
+            Original Price (USD)
+            <input id="price" name="price" type="number" min="0" step="0.01" required />
+          </label>
+
+          <label for="discountedPrice">
+            Discounted Price (USD)
+            <input
+              id="discountedPrice"
+              name="discountedPrice"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+            />
+          </label>
+
+          <label for="image">
+            Product Image URL
+            <input id="image" name="image" type="url" required />
+          </label>
+
+          <label for="rating">
+            Rating (0-5)
+            <input id="rating" name="rating" type="number" min="0" max="5" step="0.1" required />
+          </label>
+
+          <label for="description">
+            Description
+            <textarea id="description" name="description" rows="4" required></textarea>
+          </label>
+
+          <div class="action-row">
+            <button class="button" type="submit">Save Product</button>
+            <button class="button button-ghost" type="button" id="reset-btn">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="admin-products">
+        <h2>Current Products</h2>
+        <div id="admin-list" class="admin-list"></div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="./data.js"></script>
+    <script src="./admin.js"></script>
+  </body>
+</html>
