@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Eye, RefreshCw, Search } from 'lucide-react'
-import { dashboardApi } from '../api'
+import { dashboardApi, formatMoney } from '../api'
 import OrderDetailPanel from '../components/OrderDetailPanel'
 
 function shortId(id) {
@@ -28,8 +28,14 @@ function statusBadge(status) {
   return map[status] ?? 'bg-slate-100 text-slate-700'
 }
 
-export default function OrdersTab({ isAdmin, formatMoney }) {
+function money(amount, currency = 'INR') {
+  return formatMoney(amount, currency)
+}
+
+export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
+  const fmt = formatMoneyProp ?? formatMoney
   const [orders, setOrders] = useState([])
+  const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
@@ -46,8 +52,10 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
         : '/api/vendor/orders'
       const data = await dashboardApi(path)
       setOrders(data.orders ?? [])
+      setSummary(isAdmin ? data.summary ?? null : null)
     } catch (err) {
       setOrders([])
+      setSummary(null)
       setError(err.message)
     } finally {
       setLoading(false)
@@ -63,16 +71,11 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
     load(searchEmail.trim())
   }
 
-  const paidCount = orders.filter((o) => o.paymentStatus === 'paid').length
-  const revenue = orders
-    .filter((o) => o.paymentStatus === 'paid')
-    .reduce((sum, o) => sum + Number(o.total ?? o.amount ?? 0), 0)
-
   if (isAdmin && selectedId) {
     return (
       <OrderDetailPanel
         orderId={selectedId}
-        formatMoney={formatMoney}
+        formatMoney={fmt}
         onBack={() => setSelectedId(null)}
         onUpdated={() => load(searchEmail.trim() || undefined)}
       />
@@ -83,9 +86,11 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">{isAdmin ? 'Orders' : 'My orders'}</h2>
+          <h2 className="text-2xl font-bold">{isAdmin ? 'Paid orders' : 'My orders'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {orders.length} records • {paidCount} paid • {formatMoney(revenue)} revenue
+            {isAdmin
+              ? `${summary?.count ?? orders.length} paid orders • Net payout ${fmt(summary?.totalNetPayout ?? 0)}`
+              : `${orders.length} records`}
           </p>
         </div>
         <button
@@ -97,6 +102,27 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
         </button>
       </div>
 
+      {isAdmin && summary ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer paid</p>
+            <p className="mt-1 text-xl font-bold text-emerald-600">{fmt(summary.totalPaid)}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gateway fees</p>
+            <p className="mt-1 text-xl font-bold text-rose-600">{fmt(summary.totalGatewayFee)}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gateway tax</p>
+            <p className="mt-1 text-xl font-bold text-amber-600">{fmt(summary.totalGatewayTax)}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net payout</p>
+            <p className="mt-1 text-xl font-bold text-sky-600">{fmt(summary.totalNetPayout)}</p>
+          </div>
+        </div>
+      ) : null}
+
       {isAdmin ? (
         <form onSubmit={handleSearch} className="mt-4 flex flex-wrap gap-2">
           <div className="relative min-w-[240px] flex-1">
@@ -104,7 +130,7 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
             <input
               value={searchEmail}
               onChange={(e) => setSearchEmail(e.target.value)}
-              placeholder="Search by customer email..."
+              placeholder="Search paid orders by customer email..."
               className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm dark:border-white/10 dark:bg-white/5"
             />
           </div>
@@ -127,42 +153,68 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
       {loading ? <p className="mt-6 text-sm text-slate-500">Loading orders...</p> : null}
 
       <div className="mt-6 overflow-x-auto">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full min-w-[1100px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 dark:border-white/10">
               <th className="py-3 pr-4">Order</th>
               <th className="py-3 pr-4">Date</th>
               <th className="py-3 pr-4">Customer</th>
               <th className="py-3 pr-4">Products</th>
-              <th className="py-3 pr-4">Amount</th>
+              {isAdmin ? (
+                <>
+                  <th className="py-3 pr-4">Paid</th>
+                  <th className="py-3 pr-4">Gateway fee</th>
+                  <th className="py-3 pr-4">Net payout</th>
+                  <th className="py-3 pr-4">Gateway</th>
+                </>
+              ) : (
+                <th className="py-3 pr-4">Amount</th>
+              )}
               <th className="py-3 pr-4">Status</th>
-              <th className="py-3 pr-4">Payment</th>
               {isAdmin ? <th className="py-3">Actions</th> : <th className="py-3">License</th>}
             </tr>
           </thead>
           <tbody>
             {orders.map((o) => {
-              const amount = o.total ?? o.amount ?? 0
+              const payment = o.payment ?? {}
+              const currency = payment.currency ?? o.currency ?? 'INR'
               const displayStatus = o.orderStatus ?? o.paymentStatus
               return (
                 <tr key={o.id ?? `${o.orderId}-${o.productName}`} className="border-b border-slate-100 dark:border-white/5">
                   <td className="py-3 pr-4 font-medium">#{shortId(o.orderId ?? o.id)}</td>
                   <td className="py-3 pr-4 text-slate-500">{formatDate(o.createdAt)}</td>
                   <td className="py-3 pr-4">{o.customerEmail ?? '—'}</td>
-                  <td className="py-3 pr-4 max-w-[200px] truncate">{o.productName ?? '—'}</td>
-                  <td className="py-3 pr-4">{formatMoney(amount)}</td>
+                  <td className="py-3 pr-4 max-w-[180px] truncate">{o.productName ?? '—'}</td>
+                  {isAdmin ? (
+                    <>
+                      <td className="py-3 pr-4 font-semibold text-emerald-700">{money(payment.amountPaid ?? o.total, currency)}</td>
+                      <td className="py-3 pr-4 text-rose-600">
+                        {money((payment.gatewayFee ?? 0) + (payment.gatewayTax ?? 0), currency)}
+                        {payment.gatewayTax ? (
+                          <span className="block text-[10px] text-slate-400">
+                            fee {money(payment.gatewayFee, currency)} + tax {money(payment.gatewayTax, currency)}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="py-3 pr-4 font-semibold text-sky-700">{money(payment.netPayout ?? o.total, currency)}</td>
+                      <td className="py-3 pr-4 text-xs capitalize text-slate-500">
+                        {payment.feeProvider ?? o.paymentMethod ?? '—'}
+                      </td>
+                    </>
+                  ) : (
+                    <td className="py-3 pr-4">{fmt(o.total ?? o.amount ?? 0, currency)}</td>
+                  )}
                   <td className="py-3 pr-4">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${statusBadge(displayStatus)}`}>
                       {displayStatus?.replace('_', ' ') ?? 'unknown'}
                     </span>
                   </td>
-                  <td className="py-3 pr-4 capitalize text-slate-500">{o.paymentMethod ?? '—'}</td>
                   {isAdmin ? (
                     <td className="py-3">
                       <button
                         type="button"
                         onClick={() => setSelectedId(o.id ?? o.orderId)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:border-sky-900/40 dark:text-sky-300"
+                        className="inline-flex items-center gap-1 rounded-lg border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700"
                       >
                         <Eye size={12} /> View
                       </button>
@@ -176,7 +228,9 @@ export default function OrdersTab({ isAdmin, formatMoney }) {
           </tbody>
         </table>
         {!loading && orders.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No orders yet. Completed checkouts will appear here.</p>
+          <p className="mt-4 text-sm text-slate-500">
+            {isAdmin ? 'No paid orders yet. Only successful payments appear here.' : 'No orders yet.'}
+          </p>
         ) : null}
       </div>
     </div>

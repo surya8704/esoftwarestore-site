@@ -39,8 +39,10 @@ export async function uploadProductImage(file) {
   return data
 }
 
-export function formatMoney(amount) {
-  return `₹${Number(amount ?? 0).toLocaleString()}`
+export function formatMoney(amount, currency = 'INR') {
+  const symbols = { INR: '₹', USD: '$', EUR: '€', GBP: '£' }
+  const symbol = symbols[currency] ?? `${currency} `
+  return `${symbol}${Number(amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
 export const emptyProductForm = {

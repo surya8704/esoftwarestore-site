@@ -357,6 +357,8 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   const stats = order.customerStats ?? {}
   const canRefund = order.paymentStatus === 'paid' && order.orderStatus !== 'refunded'
   const showDelivery = !['cancelled', 'refunded'].includes(order.orderStatus)
+  const payment = order.payment ?? {}
+  const currency = payment.currency ?? order.currency ?? 'INR'
 
   return (
     <div>
@@ -397,6 +399,37 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
               </button>
             </div>
           </section>
+
+          {order.paymentStatus === 'paid' ? (
+            <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
+              <h3 className="font-bold">Payment breakdown</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Via {payment.feeProvider ?? order.paymentMethod ?? '—'}
+                {order.razorpayPaymentId ? ` • ${order.razorpayPaymentId}` : ''}
+                {order.payuPaymentId ? ` • PayU ${order.payuPaymentId}` : ''}
+              </p>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/30">
+                  <dt className="text-xs font-semibold uppercase text-emerald-700">Customer paid</dt>
+                  <dd className="mt-1 text-lg font-bold text-emerald-800">{formatMoney(payment.amountPaid ?? order.total, currency)}</dd>
+                </div>
+                <div className="rounded-xl bg-rose-50 p-3 dark:bg-rose-950/30">
+                  <dt className="text-xs font-semibold uppercase text-rose-700">Platform deduction</dt>
+                  <dd className="mt-1 text-lg font-bold text-rose-800">
+                    {formatMoney((payment.gatewayFee ?? 0) + (payment.gatewayTax ?? 0), currency)}
+                  </dd>
+                  <p className="mt-1 text-[11px] text-rose-600">
+                    Fee {formatMoney(payment.gatewayFee ?? 0, currency)}
+                    {payment.gatewayTax ? ` + tax ${formatMoney(payment.gatewayTax, currency)}` : ''}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-sky-50 p-3 sm:col-span-2 dark:bg-sky-950/30">
+                  <dt className="text-xs font-semibold uppercase text-sky-700">Net payout to you</dt>
+                  <dd className="mt-1 text-xl font-bold text-sky-800">{formatMoney(payment.netPayout ?? order.total, currency)}</dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
 
           {showDelivery ? (
             <section className="rounded-2xl border border-orange-200 bg-orange-50/40 p-5 dark:border-orange-900/40 dark:bg-orange-950/20">

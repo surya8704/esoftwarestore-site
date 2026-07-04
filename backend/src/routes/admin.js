@@ -13,6 +13,7 @@ import {
 import { getAiSupportReply, getTelephonicActivationScript } from '../services/ai.js'
 import { sendAdminKeyDeliveryEmail } from '../services/email.js'
 import { addOrderNote, getCustomerStats, loadAdminOrderDetail } from '../services/orders.js'
+import { captureOrderPaymentFees, resolveOrderPaymentBreakdown, summarizePaymentBreakdowns } from '../services/paymentFees.js'
 import { processOrderRefund } from '../services/refunds.js'
 import { generateConfirmationCode } from '../lib/utils.js'
 import { hashPassword } from '../db/seed.js'
@@ -23,6 +24,7 @@ const ORDER_STATUSES = ['pending', 'processing', 'completed', 'on_hold', 'cancel
 async function mapOrderListRow(order) {
   const items = await OrderItem.find({ orderId: order._id })
   const mapped = mapId(order)
+  const payment = resolveOrderPaymentBreakdown(order)
   return {
     ...mapped,
     orderId: mapped.id,
@@ -30,6 +32,7 @@ async function mapOrderListRow(order) {
     productName: items.map((item) => item.productName).join(', ') || '—',
     quantity: items.reduce((sum, item) => sum + item.quantity, 0),
     items: items.map(mapId),
+    payment,
   }
 }
 
@@ -248,10 +251,13 @@ export async function adminRoutes(app) {
 
   app.get('/api/admin/orders', { preHandler: [app.requireAdmin] }, async (request) => {
     const email = request.query?.email
-    const filter = email ? { customerEmail: String(email).toLowerCase() } : {}
+    const filter = { paymentStatus: 'paid' }
+    if (email) filter.customerEmail = String(email).toLowerCase()
     const result = await Order.find(filter).sort({ createdAt: -1 }).limit(200)
     const orders = await Promise.all(result.map(mapOrderListRow))
-    return { orders }
+    const breakdowns = orders.map((o) => o.payment)
+    const summary = summarizePaymentBreakdowns(breakdowns)
+    return { orders, summary: { ...summary, count: orders.length } }
   })
 
   app.get('/api/admin/orders/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {

@@ -11,6 +11,7 @@ import {
 import { sendOrderDeliveryEmail } from './email.js'
 import { assignLicenseKey } from './license.js'
 import { markCartRecovered } from './marketing.js'
+import { captureOrderPaymentFees } from './paymentFees.js'
 import { sendOrderWhatsApp } from './whatsapp.js'
 
 export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId } = {}) {
@@ -54,6 +55,7 @@ export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId
   if (razorpayPaymentId) order.razorpayPaymentId = razorpayPaymentId
   if (payuPaymentId) order.payuPaymentId = payuPaymentId
   order.licenseKey = primaryKey
+  await captureOrderPaymentFees(order, { razorpayPaymentId, payuPaymentId })
   order.emailSent = false
   await order.save()
 

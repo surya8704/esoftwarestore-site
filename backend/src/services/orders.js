@@ -1,5 +1,6 @@
 import { mapId } from '../db/client.js'
 import { Order, OrderItem, OrderNote, Product, User } from '../db/models.js'
+import { resolveOrderPaymentBreakdown } from './paymentFees.js'
 
 export async function getCustomerStats(customerEmail) {
   const orders = await Order.find({ customerEmail }).sort({ createdAt: -1 })
@@ -42,6 +43,7 @@ export async function loadAdminOrderDetail(orderId) {
   return {
     ...mapped,
     orderId: mapped.id,
+    payment: resolveOrderPaymentBreakdown(order),
     items: items.map((item) => {
       const mappedItem = mapId(item)
       const product = productMap.get(item.productId?.toString?.() ?? String(item.productId))
