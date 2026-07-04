@@ -311,16 +311,38 @@ export async function adminRoutes(app) {
   })
 
   app.patch('/api/admin/orders/:id/items/:itemId', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const attachmentSchema = z.object({
+      type: z.enum(['link', 'image', 'video', 'file']),
+      url: z.string().max(500).optional(),
+      label: z.string().max(120).optional(),
+      filename: z.string().max(120).optional(),
+    })
     const schema = z.object({
       licenseKey: z.string().min(1).max(200).optional(),
       downloadUrl: z.string().max(500).optional(),
+      deliveryDescription: z.string().max(2000).optional(),
+      deliveryAttachments: z.array(attachmentSchema).max(10).optional(),
     })
     const payload = schema.parse(request.body)
     const item = await OrderItem.findOne({ _id: request.params.itemId, orderId: request.params.id })
     if (!item) return reply.notFound('Order item not found')
 
     if (payload.licenseKey !== undefined) item.licenseKey = payload.licenseKey.trim()
-    if (payload.downloadUrl !== undefined) item.downloadUrl = payload.downloadUrl.trim() || undefined
+    if (payload.deliveryDescription !== undefined) item.deliveryDescription = payload.deliveryDescription.trim()
+    if (payload.deliveryAttachments !== undefined) {
+      item.deliveryAttachments = payload.deliveryAttachments
+        .filter((a) => a.url?.trim() || a.filename)
+        .map((a) => ({
+          type: a.type,
+          url: a.url?.trim() || undefined,
+          label: a.label?.trim() || undefined,
+          filename: a.filename?.trim() || undefined,
+        }))
+      const firstLink = item.deliveryAttachments.find((a) => a.type === 'link' && a.url)
+      item.downloadUrl = firstLink?.url || payload.downloadUrl?.trim() || undefined
+    } else if (payload.downloadUrl !== undefined) {
+      item.downloadUrl = payload.downloadUrl.trim() || undefined
+    }
     await item.save()
 
     const order = await Order.findById(request.params.id)
@@ -344,14 +366,23 @@ export async function adminRoutes(app) {
   })
 
   app.post('/api/admin/orders/:id/send-keys', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const attachmentSchema = z.object({
+      type: z.enum(['link', 'image', 'video', 'file']),
+      url: z.string().max(500).optional(),
+      label: z.string().max(120).optional(),
+      filename: z.string().max(120).optional(),
+      content: z.string().max(14000000).optional(),
+      contentType: z.string().max(100).optional(),
+    })
     const itemDetailSchema = z.object({
       licenseKey: z.string().min(1).max(200),
+      deliveryDescription: z.string().max(2000).optional(),
+      deliveryAttachments: z.array(attachmentSchema).max(10).optional(),
       downloadUrl: z.string().max(500).optional(),
     })
     const schema = z.object({
-      message: z.string().max(1000).optional(),
+      message: z.string().max(5000).optional(),
       markCompleted: z.boolean().default(true),
-      itemIds: z.array(z.string()).optional(),
       itemDetails: z.record(z.string(), itemDetailSchema).optional(),
     })
     const payload = schema.parse(request.body ?? {})
@@ -363,9 +394,20 @@ export async function adminRoutes(app) {
         const item = await OrderItem.findOne({ _id: itemId, orderId: order._id })
         if (!item) continue
         item.licenseKey = detail.licenseKey.trim()
-        if (detail.downloadUrl !== undefined) {
-          item.downloadUrl = detail.downloadUrl.trim() || undefined
+        if (detail.deliveryDescription !== undefined) {
+          item.deliveryDescription = detail.deliveryDescription.trim()
         }
+        const savedAttachments = (detail.deliveryAttachments ?? [])
+          .filter((a) => a.url?.trim() || a.filename)
+          .map((a) => ({
+            type: a.type,
+            url: a.url?.trim() || undefined,
+            label: a.label?.trim() || undefined,
+            filename: a.filename?.trim() || undefined,
+          }))
+        item.deliveryAttachments = savedAttachments
+        const firstLink = savedAttachments.find((a) => a.type === 'link' && a.url)
+        item.downloadUrl = firstLink?.url || detail.downloadUrl?.trim() || undefined
         await item.save()
       }
     }
@@ -374,18 +416,18 @@ export async function adminRoutes(app) {
     const products = await Product.find({ _id: { $in: allItems.map((i) => i.productId) } })
     const productMap = new Map(products.map((p) => [p._id.toString(), p]))
 
-    const targetItems = payload.itemIds?.length
-      ? allItems.filter((item) => payload.itemIds.includes(item._id.toString()))
-      : allItems
-
+    const requestDetails = payload.itemDetails ?? {}
     const deliveredItems = []
-    for (const item of targetItems) {
+    for (const item of allItems) {
       const key = item.licenseKey?.trim()
       if (!key) continue
       const product = productMap.get(item.productId?.toString?.())
+      const detail = requestDetails[item._id.toString()]
       deliveredItems.push({
         ...mapId(item),
         licenseKey: key,
+        deliveryDescription: item.deliveryDescription ?? '',
+        deliveryAttachments: detail?.deliveryAttachments ?? item.deliveryAttachments ?? [],
         downloadUrl: item.downloadUrl || product?.downloadUrl || null,
       })
     }
@@ -419,7 +461,14 @@ export async function adminRoutes(app) {
     await order.save()
 
     const keySummary = deliveredItems
-      .map((i) => `${i.productName} activation code: ${i.licenseKey}${i.downloadUrl ? `\nDownload: ${i.downloadUrl}` : ''}`)
+      .map((i) => {
+        const lines = [`${i.productName} activation code: ${i.licenseKey}`]
+        if (i.deliveryDescription) lines.push(`Description: ${i.deliveryDescription}`)
+        for (const att of i.deliveryAttachments ?? []) {
+          if (att.url) lines.push(`${att.label || att.type}: ${att.url}`)
+        }
+        return lines.join('\n')
+      })
       .join('\n\n')
 
     await addOrderNote({

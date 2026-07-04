@@ -48,6 +48,12 @@ export async function loadAdminOrderDetail(orderId) {
       return {
         ...mappedItem,
         downloadUrl: item.downloadUrl || product?.downloadUrl || null,
+        deliveryDescription: item.deliveryDescription ?? '',
+        deliveryAttachments: item.deliveryAttachments?.length
+          ? item.deliveryAttachments
+          : item.downloadUrl
+            ? [{ type: 'link', url: item.downloadUrl, label: 'Download' }]
+            : [],
         keySentAt: item.keySentAt ?? null,
         sku: product?.slug ?? null,
       }

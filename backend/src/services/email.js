@@ -31,7 +31,14 @@ export function buildLicenseKeyText({ order, items, confirmationCode, customMess
   for (const item of items.filter((i) => i.licenseKey)) {
     lines.push(`Product: ${item.productName}`)
     lines.push(`Activation code: ${item.licenseKey}`)
-    if (item.downloadUrl) lines.push(`Download link: ${item.downloadUrl}`)
+    if (item.deliveryDescription) lines.push(`Description: ${item.deliveryDescription}`)
+    for (const att of item.deliveryAttachments ?? []) {
+      if (att.url) lines.push(`${att.label || att.type}: ${att.url}`)
+      else if (att.filename) lines.push(`Attachment: ${att.filename}`)
+    }
+    if (item.downloadUrl && !(item.deliveryAttachments ?? []).some((a) => a.url === item.downloadUrl)) {
+      lines.push(`Download link: ${item.downloadUrl}`)
+    }
     lines.push('')
   }
 
@@ -98,19 +105,69 @@ async function fetchRemoteAttachment(url, suggestedName) {
   }
 }
 
-export async function buildProductFileAttachments(items) {
+export async function buildItemDeliveryAttachments(items) {
   const attachments = []
-  for (const item of items) {
-    if (!item.downloadUrl) continue
-    const ext = item.downloadUrl.split('.').pop()?.split('?')[0]?.toLowerCase()
-    const isFile = ['exe', 'zip', 'msi', 'dmg', 'pkg', 'rar', '7z', 'iso', 'pdf'].includes(ext ?? '')
-    if (!isFile) continue
+  const seen = new Set()
 
-    const safeName = `${item.productName ?? 'Product'}`.replace(/[^\w\s.-]/g, '').trim().slice(0, 40)
-    const remote = await fetchRemoteAttachment(item.downloadUrl, `${safeName}.${ext}`)
-    if (remote) attachments.push(remote)
+  const pushUnique = (entry) => {
+    const key = `${entry.filename}:${entry.content?.slice(0, 32)}`
+    if (seen.has(key)) return
+    seen.add(key)
+    attachments.push(entry)
   }
+
+  for (const item of items) {
+    for (const att of item.deliveryAttachments ?? []) {
+      if (att.type === 'file' && att.content) {
+        pushUnique({
+          filename: att.filename || `${item.productName}-file`.replace(/[^\w.-]/g, '_').slice(0, 40),
+          content: att.content,
+          contentType: att.contentType,
+        })
+        continue
+      }
+
+      if (!att.url?.startsWith('http')) continue
+
+      if (att.type === 'link') {
+        continue
+      }
+
+      if (att.type === 'image' || att.type === 'video') {
+        const ext = att.type === 'image' ? 'jpg' : 'mp4'
+        const remote = await fetchRemoteAttachment(
+          att.url,
+          att.filename || `${item.productName}-${att.type}.${ext}`.replace(/[^\w.-]/g, '_').slice(0, 50),
+        )
+        if (remote) {
+          pushUnique(remote)
+        }
+        continue
+      }
+
+      const urlExt = att.url.split('.').pop()?.split('?')[0]?.toLowerCase()
+      const isFile = ['exe', 'zip', 'msi', 'dmg', 'pkg', 'rar', '7z', 'iso', 'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov'].includes(urlExt ?? '')
+      if (isFile) {
+        const remote = await fetchRemoteAttachment(att.url, att.filename || att.label)
+        if (remote) pushUnique(remote)
+      }
+    }
+
+    if (item.downloadUrl?.startsWith('http')) {
+      const ext = item.downloadUrl.split('.').pop()?.split('?')[0]?.toLowerCase()
+      const isFile = ['exe', 'zip', 'msi', 'dmg', 'pkg', 'rar', '7z', 'iso', 'pdf'].includes(ext ?? '')
+      if (isFile) {
+        const remote = await fetchRemoteAttachment(item.downloadUrl, `${item.productName}.${ext}`.replace(/[^\w.-]/g, '_'))
+        if (remote) pushUnique(remote)
+      }
+    }
+  }
+
   return attachments
+}
+
+export async function buildProductFileAttachments(items) {
+  return buildItemDeliveryAttachments(items)
 }
 
 export async function sendEmail({
@@ -195,26 +252,50 @@ export async function sendEmail({
 }
 
 export function orderDeliveryEmail({ order, items, confirmationCode, customMessage }) {
-  const itemLines = items
+  const itemBlocks = items
     .map((item) => {
-      const download = item.downloadUrl
-        ? `<br><a href="${escapeHtml(item.downloadUrl)}" style="color:#f97316">Download software</a>`
+      const attachmentLines = (item.deliveryAttachments ?? [])
+        .filter((att) => att.url)
+        .map((att) => {
+          const label = escapeHtml(att.label || att.type)
+          if (att.type === 'video') {
+            return `<li><a href="${escapeHtml(att.url)}" style="color:#f97316">${label} (video)</a></li>`
+          }
+          if (att.type === 'image') {
+            return `<li><a href="${escapeHtml(att.url)}" style="color:#f97316">${label} (image)</a></li>`
+          }
+          return `<li><a href="${escapeHtml(att.url)}" style="color:#f97316">${label}</a></li>`
+        })
+        .join('')
+
+      const desc = item.deliveryDescription?.trim()
+        ? `<p style="margin:8px 0;color:#475569;font-size:14px">${escapeHtml(item.deliveryDescription.trim())}</p>`
         : ''
-      return `<li style="margin-bottom:12px"><strong>${escapeHtml(item.productName)}</strong><br>Activation code: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(item.licenseKey ?? 'Processing')}</code>${download}</li>`
+
+      const attachmentsBlock = attachmentLines
+        ? `<ul style="margin:8px 0 0;padding-left:18px;font-size:14px">${attachmentLines}</ul>`
+        : ''
+
+      return `<li style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e5e7eb">
+        <strong>${escapeHtml(item.productName)}</strong>
+        ${desc}
+        <p style="margin:8px 0">Activation code: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(item.licenseKey ?? 'Processing')}</code></p>
+        ${attachmentsBlock}
+      </li>`
     })
     .join('')
 
   const messageBlock = customMessage?.trim()
-    ? `<p style="background:#fff7ed;border-left:4px solid #f97316;padding:12px 16px;border-radius:8px">${escapeHtml(customMessage.trim())}</p>`
+    ? `<div style="background:#fff7ed;border-left:4px solid #f97316;padding:12px 16px;border-radius:8px;margin-bottom:20px;white-space:pre-wrap">${escapeHtml(customMessage.trim())}</div>`
     : ''
 
   return `<div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-    <h1 style="color:#1e3a5f">Your license is ready</h1>
+    <h1 style="color:#1e3a5f">Thank you for your purchase</h1>
     ${messageBlock}
     <p>Confirmation: <strong>${escapeHtml(confirmationCode)}</strong></p>
     <p>Order #${escapeHtml(String(order.id ?? order._id).slice(-8).toUpperCase())}</p>
-    <ul style="padding-left:20px">${itemLines}</ul>
-    <p style="color:#64748b;font-size:14px;margin-top:24px">Your license key(s) are also attached to this email as a text file.</p>
+    <ul style="padding-left:20px;list-style:none">${itemBlocks}</ul>
+    <p style="color:#64748b;font-size:14px;margin-top:24px">License details and files are attached to this email.</p>
   </div>`
 }
 
@@ -222,7 +303,7 @@ export async function sendOrderDeliveryEmail({ order, items, confirmationCode })
   const keyedItems = items.filter((i) => i.licenseKey)
   const attachments = [
     ...buildLicenseAttachments({ order, items: keyedItems, confirmationCode }),
-    ...(await buildProductFileAttachments(keyedItems)),
+    ...(await buildItemDeliveryAttachments(keyedItems)),
   ]
   const html = orderDeliveryEmail({ order, items: keyedItems, confirmationCode })
   return sendEmail({
@@ -245,7 +326,7 @@ export async function sendAdminKeyDeliveryEmail({ order, items, confirmationCode
 
   const attachments = [
     ...buildLicenseAttachments({ order, items: keyedItems, confirmationCode, customMessage }),
-    ...(await buildProductFileAttachments(keyedItems)),
+    ...(await buildItemDeliveryAttachments(keyedItems)),
   ]
   const html = orderDeliveryEmail({ order, items: keyedItems, confirmationCode, customMessage })
   const orderRef = String(order.id ?? order._id ?? '').slice(-8).toUpperCase()

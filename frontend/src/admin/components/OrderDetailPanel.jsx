@@ -3,12 +3,17 @@ import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
+  Link2,
   LoaderCircle,
   Mail,
+  Paperclip,
+  Plus,
   RotateCcw,
   Save,
   Send,
+  Trash2,
   User,
+  Video,
 } from 'lucide-react'
 import { dashboardApi } from '../api'
 
@@ -19,6 +24,13 @@ const ORDER_STATUSES = [
   { value: 'on_hold', label: 'On hold' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'refunded', label: 'Refunded' },
+]
+
+const ATTACHMENT_TYPES = [
+  { value: 'link', label: 'Link' },
+  { value: 'image', label: 'Image URL' },
+  { value: 'video', label: 'Video URL' },
+  { value: 'file', label: 'Upload file' },
 ]
 
 function formatDate(value) {
@@ -55,14 +67,71 @@ function paymentLabel(order) {
   return method || '—'
 }
 
-function buildItemDetails(order, keyEdits, downloadEdits) {
+function newAttachment(type = 'link') {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    url: '',
+    label: '',
+    filename: '',
+    content: '',
+    contentType: '',
+  }
+}
+
+function itemEditFromServer(item) {
+  const attachments = (item.deliveryAttachments ?? []).length
+    ? item.deliveryAttachments.map((att) => ({
+        ...newAttachment(att.type),
+        ...att,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      }))
+    : item.downloadUrl
+      ? [{ ...newAttachment('link'), url: item.downloadUrl, label: 'Download' }]
+      : [newAttachment('link')]
+
+  return {
+    licenseKey: item.licenseKey ?? '',
+    description: item.deliveryDescription ?? '',
+    attachments,
+  }
+}
+
+function buildThankYouDraft(order) {
+  const name = order.billingName || 'Customer'
+  const products = (order.items ?? []).map((i) => i.productName).join(', ')
+  return `Dear ${name},
+
+Thank you for your purchase from eSoftware Store!
+
+Your order #${shortId(order.id)}${products ? ` for ${products}` : ''} has been processed successfully.
+
+Please find your activation code(s), description, and attachments in this email. Keep your license key safe and do not share it with others.
+
+If you need installation help, reply to this email or contact us on WhatsApp.
+
+Best regards,
+eSoftware Store Support Team`
+}
+
+function buildItemDetailsPayload(itemEdits) {
   const itemDetails = {}
-  for (const item of order.items ?? []) {
-    const licenseKey = keyEdits[item.id]?.trim()
+  for (const [itemId, edit] of Object.entries(itemEdits)) {
+    const licenseKey = edit.licenseKey?.trim()
     if (!licenseKey) continue
-    itemDetails[item.id] = {
+    itemDetails[itemId] = {
       licenseKey,
-      downloadUrl: downloadEdits[item.id]?.trim() || undefined,
+      deliveryDescription: edit.description?.trim() || undefined,
+      deliveryAttachments: (edit.attachments ?? [])
+        .filter((att) => att.url?.trim() || att.content)
+        .map((att) => ({
+          type: att.type,
+          url: att.url?.trim() || undefined,
+          label: att.label?.trim() || undefined,
+          filename: att.filename || undefined,
+          content: att.content || undefined,
+          contentType: att.contentType || undefined,
+        })),
     }
   }
   return itemDetails
@@ -76,11 +145,9 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   const [status, setStatus] = useState('')
   const [orderStatus, setOrderStatus] = useState('processing')
   const [noteText, setNoteText] = useState('')
-  const [noteType, setNoteType] = useState('private')
-  const [keyEdits, setKeyEdits] = useState({})
-  const [downloadEdits, setDownloadEdits] = useState({})
+  const [itemEdits, setItemEdits] = useState({})
   const [refundReason, setRefundReason] = useState('')
-  const [keyMessage, setKeyMessage] = useState('')
+  const [thankYouEmail, setThankYouEmail] = useState('')
   const [markCompleted, setMarkCompleted] = useState(true)
 
   const load = useCallback(async () => {
@@ -90,14 +157,12 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
       const data = await dashboardApi(`/api/admin/orders/${orderId}`)
       setOrder(data.order)
       setOrderStatus(data.order.orderStatus ?? 'processing')
-      const keys = {}
-      const downloads = {}
+      const edits = {}
       for (const item of data.order.items ?? []) {
-        keys[item.id] = item.licenseKey ?? ''
-        downloads[item.id] = item.downloadUrl ?? ''
+        edits[item.id] = itemEditFromServer(item)
       }
-      setKeyEdits(keys)
-      setDownloadEdits(downloads)
+      setItemEdits(edits)
+      setThankYouEmail(buildThankYouDraft(data.order))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -108,6 +173,61 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   useEffect(() => {
     load()
   }, [load])
+
+  const updateItemEdit = (itemId, patch) => {
+    setItemEdits((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], ...patch },
+    }))
+  }
+
+  const updateAttachment = (itemId, attachmentId, patch) => {
+    setItemEdits((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        attachments: prev[itemId].attachments.map((att) =>
+          att.id === attachmentId ? { ...att, ...patch } : att,
+        ),
+      },
+    }))
+  }
+
+  const addAttachment = (itemId, type = 'link') => {
+    setItemEdits((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        attachments: [...(prev[itemId]?.attachments ?? []), newAttachment(type)],
+      },
+    }))
+  }
+
+  const removeAttachment = (itemId, attachmentId) => {
+    setItemEdits((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        attachments: prev[itemId].attachments.filter((att) => att.id !== attachmentId),
+      },
+    }))
+  }
+
+  const handleFileAttachment = (itemId, attachmentId, file) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = String(reader.result ?? '').split(',')[1] ?? ''
+      updateAttachment(itemId, attachmentId, {
+        type: 'file',
+        filename: file.name,
+        content: base64,
+        contentType: file.type || 'application/octet-stream',
+        label: file.name,
+      })
+    }
+    reader.readAsDataURL(file)
+  }
 
   const saveStatus = async () => {
     setSaving(true)
@@ -127,14 +247,71 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
     }
   }
 
-  const addNote = async () => {
-    if (!noteText.trim()) return
+  const saveDraft = async () => {
     setSaving(true)
     setStatus('')
     try {
+      for (const [itemId, edit] of Object.entries(itemEdits)) {
+        await dashboardApi(`/api/admin/orders/${orderId}/items/${itemId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...(edit.licenseKey?.trim() ? { licenseKey: edit.licenseKey.trim() } : {}),
+            deliveryDescription: edit.description?.trim() || '',
+            deliveryAttachments: (edit.attachments ?? [])
+              .filter((att) => att.url?.trim() || att.filename)
+              .map(({ type, url, label, filename }) => ({ type, url, label, filename })),
+          }),
+        })
+      }
+      await load()
+      setStatus('Draft saved')
+    } catch (err) {
+      setStatus(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sendToCustomer = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const itemDetails = buildItemDetailsPayload(itemEdits)
+      if (!Object.keys(itemDetails).length) {
+        setStatus('Enter at least one activation code before sending.')
+        return
+      }
+
+      const data = await dashboardApi(`/api/admin/orders/${orderId}/send-keys`, {
+        method: 'POST',
+        body: JSON.stringify({
+          message: thankYouEmail.trim() || undefined,
+          markCompleted,
+          itemDetails,
+        }),
+      })
+      setOrder(data.order)
+      setStatus(
+        data.email?.status === 'sent'
+          ? `Product key emailed to ${order.customerEmail}${markCompleted ? ' — order completed' : ''}`
+          : 'Email could not be sent — configure RESEND_API_KEY on the server',
+      )
+      onUpdated?.()
+      await load()
+    } catch (err) {
+      setStatus(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const addNote = async () => {
+    if (!noteText.trim()) return
+    setSaving(true)
+    try {
       await dashboardApi(`/api/admin/orders/${orderId}/notes`, {
         method: 'POST',
-        body: JSON.stringify({ content: noteText.trim(), noteType }),
+        body: JSON.stringify({ content: noteText.trim(), noteType: 'private' }),
       })
       setNoteText('')
       await load()
@@ -146,76 +323,15 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
     }
   }
 
-  const saveItem = async (itemId) => {
-    setSaving(true)
-    setStatus('')
-    try {
-      const body = { downloadUrl: downloadEdits[itemId]?.trim() || '' }
-      if (keyEdits[itemId]?.trim()) body.licenseKey = keyEdits[itemId].trim()
-
-      const data = await dashboardApi(`/api/admin/orders/${orderId}/items/${itemId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      })
-      setOrder(data.order)
-      setStatus('Product details saved')
-    } catch (err) {
-      setStatus(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const sendProductKey = async ({ itemIds, completeOrder = false }) => {
-    setSaving(true)
-    setStatus('')
-    try {
-      const itemDetails = buildItemDetails(order, keyEdits, downloadEdits)
-      const filteredDetails = itemIds?.length
-        ? Object.fromEntries(Object.entries(itemDetails).filter(([id]) => itemIds.includes(id)))
-        : itemDetails
-
-      if (!Object.keys(filteredDetails).length) {
-        setStatus('Enter the activation key for this product first.')
-        return
-      }
-
-      const data = await dashboardApi(`/api/admin/orders/${orderId}/send-keys`, {
-        method: 'POST',
-        body: JSON.stringify({
-          message: keyMessage || undefined,
-          markCompleted: completeOrder,
-          itemIds,
-          itemDetails: filteredDetails,
-        }),
-      })
-      setOrder(data.order)
-      if (completeOrder) setKeyMessage('')
-      setStatus(
-        data.email?.status === 'sent'
-          ? `Product key emailed to ${order.customerEmail}${completeOrder ? ' — order marked completed' : ''}`
-          : `Could not send email — add RESEND_API_KEY on the server`,
-      )
-      onUpdated?.()
-      await load()
-    } catch (err) {
-      setStatus(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const processRefund = async () => {
-    if (!window.confirm(`Refund ${formatMoney(order.total)} to customer via ${paymentLabel(order)}?`)) return
+    if (!window.confirm(`Refund ${formatMoney(order.total)} via ${paymentLabel(order)}?`)) return
     setSaving(true)
-    setStatus('')
     try {
       const data = await dashboardApi(`/api/admin/orders/${orderId}/refund`, {
         method: 'POST',
         body: JSON.stringify({ reason: refundReason || undefined }),
       })
       setOrder(data.order)
-      setRefundReason('')
       setStatus(`Refund processed (${data.refund?.gateway})`)
       onUpdated?.()
     } catch (err) {
@@ -225,15 +341,13 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
     }
   }
 
-  if (loading) {
-    return <p className="text-sm text-slate-500">Loading order details...</p>
-  }
+  if (loading) return <p className="text-sm text-slate-500">Loading order details...</p>
 
   if (error || !order) {
     return (
       <div>
-        <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-sky-600">
-          <ArrowLeft size={16} /> Back to orders
+        <button type="button" onClick={onBack} className="mb-4 text-sm font-semibold text-sky-600">
+          ← Back to orders
         </button>
         <p className="text-sm text-rose-500">{error || 'Order not found'}</p>
       </div>
@@ -241,254 +355,245 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   }
 
   const stats = order.customerStats ?? {}
-  const billing = order.billing ?? {}
   const canRefund = order.paymentStatus === 'paid' && order.orderStatus !== 'refunded'
-  const showKeyDelivery = !['cancelled', 'refunded'].includes(order.orderStatus)
+  const showDelivery = !['cancelled', 'refunded'].includes(order.orderStatus)
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-sky-600">
-        <ArrowLeft size={16} /> Back to orders
+      <button type="button" onClick={onBack} className="mb-4 text-sm font-semibold text-sky-600">
+        ← Back to orders
       </button>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">Order #{shortId(order.id)}</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Payment via {paymentLabel(order)}
-            {order.razorpayPaymentId ? ` • ${order.razorpayPaymentId}` : ''}
-            {order.payuPaymentId ? ` • PayU ${order.payuPaymentId}` : ''}
-          </p>
-          <p className="text-sm text-slate-500">Placed on {formatDate(order.createdAt)}</p>
+          <p className="mt-1 text-sm text-slate-500">{order.customerEmail} • {formatDate(order.createdAt)}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusBadge(order.orderStatus)}`}>
-            {order.orderStatus?.replace('_', ' ') ?? 'pending'}
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusBadge(order.paymentStatus)}`}>
-            Payment: {order.paymentStatus}
+            {order.orderStatus?.replace('_', ' ')}
           </span>
         </div>
       </div>
 
       {status ? <p className="mb-4 rounded-xl bg-slate-50 px-4 py-2 text-sm dark:bg-white/5">{status}</p> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
         <div className="space-y-6">
           <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
             <h3 className="font-bold">General</h3>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="font-medium text-slate-500">Order status</span>
-                <select
-                  value={orderStatus}
-                  onChange={(e) => setOrderStatus(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-white/10 dark:bg-white/5"
-                >
-                  {ORDER_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="text-sm">
-                <p className="font-medium text-slate-500">Customer email</p>
-                <a href={`mailto:${order.customerEmail}`} className="mt-1 block font-semibold text-sky-600">{order.customerEmail}</a>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={saveStatus}
-              disabled={saving}
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
-              Update order
-            </button>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
-            <h3 className="font-bold">Billing</h3>
-            <div className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              <p className="font-semibold text-slate-900 dark:text-white">{order.billingName || '—'}</p>
-              {billing.streetAddress ? <p>{billing.streetAddress}</p> : null}
-              <p className="mt-2">{order.customerEmail}</p>
+            <div className="mt-4 flex flex-wrap gap-4">
+              <select
+                value={orderStatus}
+                onChange={(e) => setOrderStatus(e.target.value)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+              >
+                {ORDER_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              <button type="button" onClick={saveStatus} disabled={saving} className="rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white">
+                Update status
+              </button>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="font-bold">Manual product key delivery</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Enter each activation code and download link, then email to the customer.
-                </p>
-              </div>
-            </div>
+          {showDelivery ? (
+            <section className="rounded-2xl border border-orange-200 bg-orange-50/40 p-5 dark:border-orange-900/40 dark:bg-orange-950/20">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-orange-900 dark:text-orange-100">
+                <Mail size={18} /> Manual product key delivery
+              </h3>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Enter each activation code, description, and attachments, then email to{' '}
+                <strong>{order.customerEmail}</strong>.
+              </p>
 
-            <div className="mt-5 space-y-4">
-              {(order.items ?? []).map((item) => (
-                <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold">{item.productName}</p>
-                      <p className="text-xs text-slate-500">
-                        Qty {item.quantity} • {formatMoney(item.unitPrice * item.quantity)}
-                        {item.sku ? ` • ${item.sku}` : ''}
-                      </p>
+              <div className="mt-5 space-y-5">
+                {(order.items ?? []).map((item) => {
+                  const edit = itemEdits[item.id] ?? itemEditFromServer(item)
+                  return (
+                    <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/40">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">{item.productName}</p>
+                          <p className="text-xs text-slate-500">
+                            Qty {item.quantity} • {formatMoney(item.unitPrice * item.quantity)}
+                            {item.sku ? ` • ${item.sku}` : ''}
+                          </p>
+                        </div>
+                        {item.keySentAt ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                            <CheckCircle2 size={12} /> Sent
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Activation code
+                        <input
+                          value={edit.licenseKey}
+                          onChange={(e) => updateItemEdit(item.id, { licenseKey: e.target.value })}
+                          placeholder="e.g. GMWPG-PW4HZ-8YFXS-WCCU7"
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-white/10 dark:bg-white/5"
+                        />
+                      </label>
+
+                      <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Description
+                        <textarea
+                          value={edit.description}
+                          onChange={(e) => updateItemEdit(item.id, { description: e.target.value })}
+                          placeholder="Installation notes or product details for the customer..."
+                          rows={2}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                        />
+                      </label>
+
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <Paperclip size={12} /> Attachments
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {ATTACHMENT_TYPES.map((t) => (
+                              <button
+                                key={t.value}
+                                type="button"
+                                onClick={() => addAttachment(item.id, t.value)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold dark:border-white/10"
+                              >
+                                <Plus size={10} /> {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-2 space-y-2">
+                          {(edit.attachments ?? []).map((att) => (
+                            <div key={att.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/5">
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold capitalize text-slate-600">
+                                  {att.type === 'video' ? <Video size={12} /> : att.type === 'link' ? <Link2 size={12} /> : <Paperclip size={12} />}
+                                  {att.type}
+                                </span>
+                                <button type="button" onClick={() => removeAttachment(item.id, att.id)} className="text-slate-400 hover:text-rose-500">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+
+                              {att.type === 'file' ? (
+                                <div className="space-y-2">
+                                  <input
+                                    type="file"
+                                    accept="image/*,video/*,.pdf,.zip,.exe,.msi,.dmg,.rar,.7z"
+                                    onChange={(e) => handleFileAttachment(item.id, att.id, e.target.files?.[0])}
+                                    className="w-full text-xs"
+                                  />
+                                  {att.filename ? <p className="text-xs text-emerald-600">Ready: {att.filename}</p> : null}
+                                </div>
+                              ) : (
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <input
+                                    value={att.url}
+                                    onChange={(e) => updateAttachment(item.id, att.id, { url: e.target.value })}
+                                    placeholder={att.type === 'video' ? 'Video URL (YouTube, etc.)' : att.type === 'image' ? 'Image URL' : 'https://...'}
+                                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                                  />
+                                  <input
+                                    value={att.label}
+                                    onChange={(e) => updateAttachment(item.id, att.id, { label: e.target.value })}
+                                    placeholder="Label (optional)"
+                                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    {item.keySentAt ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                        <CheckCircle2 size={12} /> Sent {formatDate(item.keySentAt)}
-                      </span>
-                    ) : null}
-                  </div>
+                  )
+                })}
+              </div>
 
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="block text-xs">
-                      <span className="font-semibold uppercase tracking-wide text-slate-500">Activation code</span>
-                      <input
-                        value={keyEdits[item.id] ?? ''}
-                        onChange={(e) => setKeyEdits({ ...keyEdits, [item.id]: e.target.value })}
-                        placeholder="e.g. GMWPG-PW4HZ-8YFXS-WCCU7"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-white/10 dark:bg-white/5"
-                      />
-                    </label>
-                    <label className="block text-xs">
-                      <span className="font-semibold uppercase tracking-wide text-slate-500">Download link</span>
-                      <input
-                        value={downloadEdits[item.id] ?? ''}
-                        onChange={(e) => setDownloadEdits({ ...downloadEdits, [item.id]: e.target.value })}
-                        placeholder="https://..."
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
-                      />
-                    </label>
-                  </div>
+              <div className="mt-6 border-t border-orange-200 pt-5 dark:border-orange-900/40">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Draft thank you email
+                  <textarea
+                    value={thankYouEmail}
+                    onChange={(e) => setThankYouEmail(e.target.value)}
+                    rows={8}
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm leading-relaxed dark:border-white/10 dark:bg-white/5"
+                  />
+                </label>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => saveItem(item.id)}
-                      disabled={saving}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => sendProductKey({ itemIds: [item.id], completeOrder: false })}
-                      disabled={saving || !keyEdits[item.id]?.trim()}
-                      className="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                    >
-                      <Send size={12} /> Email this key
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {showKeyDelivery ? (
-              <div className="mt-6 rounded-xl border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-900/40 dark:bg-orange-950/20">
-                <h4 className="flex items-center gap-2 font-bold text-orange-800 dark:text-orange-200">
-                  <Mail size={16} /> Send product key to customer
-                </h4>
-                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-                  Emails activation code(s) and download links to <strong>{order.customerEmail}</strong>.
-                  Each key you enter above is transferred manually to the customer via this email.
-                </p>
-                <textarea
-                  value={keyMessage}
-                  onChange={(e) => setKeyMessage(e.target.value)}
-                  placeholder="Optional message to include in email..."
-                  rows={2}
-                  className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
-                />
                 <label className="mt-3 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={markCompleted}
                     onChange={(e) => setMarkCompleted(e.target.checked)}
-                    className="rounded border-slate-300"
                   />
                   Mark order as completed after sending
                 </label>
-                <button
-                  type="button"
-                  onClick={() => sendProductKey({ completeOrder: markCompleted })}
-                  disabled={saving}
-                  className="mt-3 inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
-                  Email all product keys
-                </button>
-              </div>
-            ) : null}
 
-            <div className="mt-6 border-t border-slate-200 pt-4 text-sm dark:border-white/10">
-              <div className="flex justify-between py-2 text-base font-bold">
-                <span>Order total</span>
-                <span>{formatMoney(order.total)}</span>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={saveDraft}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold"
+                  >
+                    <Save size={14} /> Save draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendToCustomer}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
+                    Email product key to customer
+                  </button>
+                </div>
               </div>
-            </div>
-          </section>
+
+              <div className="mt-4 text-right text-sm font-bold">
+                Order total: {formatMoney(order.total)}
+              </div>
+            </section>
+          ) : null}
         </div>
 
         <aside className="space-y-6">
           <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
-            <h3 className="flex items-center gap-2 font-bold">
-              <User size={16} /> Customer history
-            </h3>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex justify-between"><dt className="text-slate-500">Total orders</dt><dd className="font-semibold">{stats.totalOrders ?? 0}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Total revenue</dt><dd className="font-semibold">{formatMoney(stats.totalRevenue ?? 0)}</dd></div>
+            <h3 className="flex items-center gap-2 font-bold"><User size={16} /> Customer</h3>
+            <p className="mt-2 text-sm font-semibold">{order.customerEmail}</p>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between"><dt className="text-slate-500">Orders</dt><dd>{stats.totalOrders ?? 0}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Revenue</dt><dd>{formatMoney(stats.totalRevenue ?? 0)}</dd></div>
             </dl>
           </section>
 
           {canRefund ? (
-            <section className="rounded-2xl border border-rose-200 bg-rose-50/50 p-5 dark:border-rose-900/40 dark:bg-rose-950/20">
-              <h3 className="flex items-center gap-2 font-bold text-rose-700">
-                <RotateCcw size={16} /> Refund
-              </h3>
-              <button
-                type="button"
-                onClick={processRefund}
-                disabled={saving}
-                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-rose-300 px-4 py-2.5 text-sm font-semibold text-rose-700"
-              >
-                <CreditCard size={14} /> Refund {formatMoney(order.total)}
+            <section className="rounded-2xl border border-rose-200 p-5">
+              <h3 className="font-bold text-rose-700">Refund</h3>
+              <button type="button" onClick={processRefund} disabled={saving} className="mt-3 w-full rounded-full border border-rose-300 py-2 text-sm font-semibold text-rose-700">
+                Refund {formatMoney(order.total)}
               </button>
             </section>
           ) : null}
 
           <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
             <h3 className="font-bold">Order notes</h3>
-            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto">
+            <div className="mt-3 max-h-48 space-y-2 overflow-y-auto text-sm">
               {(order.notes ?? []).map((note) => (
-                <div
-                  key={note.id}
-                  className={`rounded-xl p-3 text-sm ${
-                    note.noteType === 'customer'
-                      ? 'border border-sky-200 bg-sky-50 dark:border-sky-900/40'
-                      : 'bg-slate-50 dark:bg-white/5'
-                  }`}
-                >
+                <div key={note.id} className="rounded-lg bg-slate-50 p-2 dark:bg-white/5">
                   <p className="whitespace-pre-wrap">{note.content}</p>
-                  <p className="mt-2 text-xs text-slate-500">{formatDate(note.createdAt)}</p>
                 </div>
               ))}
             </div>
-            <textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="Add a note..."
-              rows={2}
-              className="mt-4 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
-            />
-            <button
-              type="button"
-              onClick={addNote}
-              disabled={saving || !noteText.trim()}
-              className="mt-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
-            >
+            <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={2} className="mt-3 w-full rounded-xl border px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
+            <button type="button" onClick={addNote} disabled={saving || !noteText.trim()} className="mt-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
               Add note
             </button>
           </section>

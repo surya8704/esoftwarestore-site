@@ -178,6 +178,13 @@ const orderItemSchema = new mongoose.Schema({
   unitPrice: { type: Number, required: true },
   licenseKey: { type: String, maxlength: 200 },
   downloadUrl: { type: String, maxlength: 500 },
+  deliveryDescription: { type: String, maxlength: 2000 },
+  deliveryAttachments: [{
+    type: { type: String, maxlength: 20 },
+    url: { type: String, maxlength: 500 },
+    label: { type: String, maxlength: 120 },
+    filename: { type: String, maxlength: 120 },
+  }],
   keySentAt: Date,
 })
 
