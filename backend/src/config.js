@@ -13,6 +13,8 @@ export const config = {
   payuMerchantKey: process.env.PAYU_MERCHANT_KEY ?? '',
   payuMerchantSalt: process.env.PAYU_MERCHANT_SALT ?? '',
   payuEnv: process.env.PAYU_ENV ?? 'test',
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
   apiPublicUrl:
     process.env.API_PUBLIC_URL ??

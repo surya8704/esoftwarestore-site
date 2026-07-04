@@ -50,6 +50,7 @@ export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId
 
   const primaryKey = deliveredItems[0]?.licenseKey ?? null
   order.paymentStatus = 'paid'
+  order.orderStatus = 'processing'
   if (razorpayPaymentId) order.razorpayPaymentId = razorpayPaymentId
   if (payuPaymentId) order.payuPaymentId = payuPaymentId
   order.licenseKey = primaryKey

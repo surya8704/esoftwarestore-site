@@ -19,11 +19,18 @@ export async function sendEmail({ to, subject, template, html, metadata = {} }) 
   return { status }
 }
 
-export function orderDeliveryEmail({ order, items, confirmationCode }) {
+export function orderDeliveryEmail({ order, items, confirmationCode, downloadLinks = [] }) {
   const itemLines = items
-    .map((item) => `<li><strong>${item.productName}</strong> — Key: <code>${item.licenseKey ?? 'Processing'}</code></li>`)
+    .map((item) => {
+      const download = item.downloadUrl
+        ? `<br><a href="${item.downloadUrl}" style="color:#f97316">Download software</a>`
+        : downloadLinks.find((d) => d.productName === item.productName)?.url
+          ? `<br><a href="${downloadLinks.find((d) => d.productName === item.productName).url}" style="color:#f97316">Download software</a>`
+          : ''
+      return `<li style="margin-bottom:12px"><strong>${item.productName}</strong><br>Activation code: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${item.licenseKey ?? 'Processing'}</code>${download}</li>`
+    })
     .join('')
-  return `<div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto"><h1>Your license is ready</h1><p>Confirmation: <strong>${confirmationCode}</strong></p><p>Order #${order.id ?? order._id} — ${order.paymentStatus}</p><ul>${itemLines}</ul></div>`
+  return `<div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto;padding:24px"><h1 style="color:#1e3a5f">Your license is ready</h1><p>Confirmation: <strong>${confirmationCode}</strong></p><p>Order #${order.id ?? order._id}</p><ul style="padding-left:20px">${itemLines}</ul><p style="color:#64748b;font-size:14px;margin-top:24px">Keep this email safe — it contains your product activation key(s).</p></div>`
 }
 
 export async function sendOrderDeliveryEmail({ order, items, confirmationCode }) {
@@ -34,6 +41,17 @@ export async function sendOrderDeliveryEmail({ order, items, confirmationCode })
     template: 'order_delivery',
     html,
     metadata: { orderId: order._id?.toString?.() ?? order.id, confirmationCode },
+  })
+}
+
+export async function sendAdminKeyDeliveryEmail({ order, items, confirmationCode, customMessage }) {
+  const html = `${customMessage ? `<p>${customMessage}</p>` : ''}${orderDeliveryEmail({ order, items, confirmationCode })}`
+  return sendEmail({
+    to: order.customerEmail,
+    subject: `Your product key — Order #${(order.id ?? order._id)?.toString?.()?.slice(-8) ?? ''}`,
+    template: 'admin_key_delivery',
+    html,
+    metadata: { orderId: order._id?.toString?.() ?? order.id, confirmationCode, source: 'admin' },
   })
 }
 

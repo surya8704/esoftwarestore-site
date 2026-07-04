@@ -137,11 +137,18 @@ const orderSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   couponCode: { type: String, maxlength: 40 },
   paymentStatus: { type: String, required: true, maxlength: 40 },
+  orderStatus: { type: String, maxlength: 40, default: 'pending' },
   paymentMethod: { type: String, maxlength: 40 },
   razorpayOrderId: { type: String, maxlength: 120 },
   razorpayPaymentId: { type: String, maxlength: 120 },
   payuTxnId: { type: String, maxlength: 40 },
   payuPaymentId: { type: String, maxlength: 120 },
+  stripePaymentId: { type: String, maxlength: 120 },
+  stripeChargeId: { type: String, maxlength: 120 },
+  refundAmount: { type: Number, default: 0 },
+  refundId: { type: String, maxlength: 120 },
+  refundReason: { type: String, maxlength: 500 },
+  refundedAt: Date,
   confirmationCode: { type: String, maxlength: 20 },
   licenseKey: { type: String, maxlength: 200 },
   emailSent: { type: Boolean, required: true, default: false },
@@ -247,6 +254,15 @@ const confirmationCodeSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now, required: true }
 })
 
+const orderNoteSchema = new mongoose.Schema({
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+  authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  authorName: { type: String, maxlength: 120 },
+  noteType: { type: String, required: true, maxlength: 20, default: 'private' },
+  content: { type: String, required: true, maxlength: 2000 },
+  createdAt: { type: Date, default: Date.now, required: true }
+})
+
 export const User = mongoose.model('User', userSchema)
 export const Vendor = mongoose.model('Vendor', vendorSchema)
 export const VendorPayout = mongoose.model('VendorPayout', vendorPayoutSchema)
@@ -267,4 +283,5 @@ export const WalletTransaction = mongoose.model('WalletTransaction', walletTrans
 export const EmailLog = mongoose.model('EmailLog', emailLogSchema)
 export const SupportVideo = mongoose.model('SupportVideo', supportVideoSchema)
 export const ConfirmationCode = mongoose.model('ConfirmationCode', confirmationCodeSchema)
+export const OrderNote = mongoose.model('OrderNote', orderNoteSchema)
 
