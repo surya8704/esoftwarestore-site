@@ -47,7 +47,8 @@ export async function loadAdminOrderDetail(orderId) {
       const product = productMap.get(item.productId?.toString?.() ?? String(item.productId))
       return {
         ...mappedItem,
-        downloadUrl: product?.downloadUrl ?? null,
+        downloadUrl: item.downloadUrl || product?.downloadUrl || null,
+        keySentAt: item.keySentAt ?? null,
         sku: product?.slug ?? null,
       }
     }),

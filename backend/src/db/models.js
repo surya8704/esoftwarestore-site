@@ -176,7 +176,9 @@ const orderItemSchema = new mongoose.Schema({
   productName: { type: String, required: true, maxlength: 160 },
   quantity: { type: Number, required: true, default: 1 },
   unitPrice: { type: Number, required: true },
-  licenseKey: { type: String, maxlength: 200 }
+  licenseKey: { type: String, maxlength: 200 },
+  downloadUrl: { type: String, maxlength: 500 },
+  keySentAt: Date,
 })
 
 const abandonedCartSchema = new mongoose.Schema({

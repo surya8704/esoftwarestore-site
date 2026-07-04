@@ -12,7 +12,6 @@ import {
 } from '../db/models.js'
 import { getAiSupportReply, getTelephonicActivationScript } from '../services/ai.js'
 import { sendAdminKeyDeliveryEmail } from '../services/email.js'
-import { assignLicenseKey } from '../services/license.js'
 import { addOrderNote, getCustomerStats, loadAdminOrderDetail } from '../services/orders.js'
 import { processOrderRefund } from '../services/refunds.js'
 import { generateConfirmationCode } from '../lib/utils.js'
@@ -312,83 +311,90 @@ export async function adminRoutes(app) {
   })
 
   app.patch('/api/admin/orders/:id/items/:itemId', { preHandler: [app.requireAdmin] }, async (request, reply) => {
-    const schema = z.object({ licenseKey: z.string().min(1).max(200) })
-    const { licenseKey } = schema.parse(request.body)
+    const schema = z.object({
+      licenseKey: z.string().min(1).max(200).optional(),
+      downloadUrl: z.string().max(500).optional(),
+    })
+    const payload = schema.parse(request.body)
     const item = await OrderItem.findOne({ _id: request.params.itemId, orderId: request.params.id })
     if (!item) return reply.notFound('Order item not found')
 
-    item.licenseKey = licenseKey
+    if (payload.licenseKey !== undefined) item.licenseKey = payload.licenseKey.trim()
+    if (payload.downloadUrl !== undefined) item.downloadUrl = payload.downloadUrl.trim() || undefined
     await item.save()
 
     const order = await Order.findById(request.params.id)
-    if (order && !order.licenseKey) {
-      order.licenseKey = licenseKey
+    if (order && payload.licenseKey && !order.licenseKey) {
+      order.licenseKey = payload.licenseKey.trim()
       await order.save()
     }
 
-    await addOrderNote({
-      orderId: order._id,
-      authorId: request.user.sub,
-      authorName: request.user.email ?? 'Admin',
-      content: `License key updated for ${item.productName}: ${licenseKey}`,
-      noteType: 'private',
-    })
+    if (payload.licenseKey) {
+      await addOrderNote({
+        orderId: order._id,
+        authorId: request.user.sub,
+        authorName: request.user.email ?? 'Admin',
+        content: `License key saved for ${item.productName}: ${payload.licenseKey.trim()}`,
+        noteType: 'private',
+      })
+    }
 
     const detail = await loadAdminOrderDetail(order._id)
     return { order: detail }
   })
 
   app.post('/api/admin/orders/:id/send-keys', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const itemDetailSchema = z.object({
+      licenseKey: z.string().min(1).max(200),
+      downloadUrl: z.string().max(500).optional(),
+    })
     const schema = z.object({
       message: z.string().max(1000).optional(),
       markCompleted: z.boolean().default(true),
-      itemKeys: z.record(z.string(), z.string()).optional(),
+      itemIds: z.array(z.string()).optional(),
+      itemDetails: z.record(z.string(), itemDetailSchema).optional(),
     })
     const payload = schema.parse(request.body ?? {})
     const order = await Order.findById(request.params.id)
     if (!order) return reply.notFound('Order not found')
 
-    if (payload.itemKeys) {
-      for (const [itemId, licenseKey] of Object.entries(payload.itemKeys)) {
-        const trimmed = licenseKey?.trim()
-        if (!trimmed) continue
+    if (payload.itemDetails) {
+      for (const [itemId, detail] of Object.entries(payload.itemDetails)) {
         const item = await OrderItem.findOne({ _id: itemId, orderId: order._id })
-        if (item) {
-          item.licenseKey = trimmed
-          await item.save()
+        if (!item) continue
+        item.licenseKey = detail.licenseKey.trim()
+        if (detail.downloadUrl !== undefined) {
+          item.downloadUrl = detail.downloadUrl.trim() || undefined
         }
+        await item.save()
       }
     }
 
-    const items = await OrderItem.find({ orderId: order._id })
-    const products = await Product.find({ _id: { $in: items.map((i) => i.productId) } })
+    const allItems = await OrderItem.find({ orderId: order._id })
+    const products = await Product.find({ _id: { $in: allItems.map((i) => i.productId) } })
     const productMap = new Map(products.map((p) => [p._id.toString(), p]))
 
+    const targetItems = payload.itemIds?.length
+      ? allItems.filter((item) => payload.itemIds.includes(item._id.toString()))
+      : allItems
+
     const deliveredItems = []
-    for (const item of items) {
-      let key = item.licenseKey
-      if (!key && (order.paymentStatus === 'paid' || order.orderStatus === 'processing')) {
-        key = await assignLicenseKey({
-          productId: item.productId,
-          variantId: item.variantId,
-          orderId: order._id,
-        })
-        item.licenseKey = key
-        await item.save()
-      }
+    for (const item of targetItems) {
+      const key = item.licenseKey?.trim()
+      if (!key) continue
       const product = productMap.get(item.productId?.toString?.())
       deliveredItems.push({
         ...mapId(item),
         licenseKey: key,
-        downloadUrl: product?.downloadUrl ?? null,
+        downloadUrl: item.downloadUrl || product?.downloadUrl || null,
       })
     }
 
-    if (!deliveredItems.some((i) => i.licenseKey)) {
-      throw app.httpErrors.badRequest('No license keys available to send. Enter and save activation keys on line items first.')
+    if (!deliveredItems.length) {
+      throw app.httpErrors.badRequest('Enter activation key(s) manually for each product before sending.')
     }
 
-    const primaryKey = deliveredItems.find((i) => i.licenseKey)?.licenseKey ?? order.licenseKey
+    const primaryKey = deliveredItems[0]?.licenseKey ?? order.licenseKey
     if (primaryKey) order.licenseKey = primaryKey
 
     let emailResult
@@ -403,20 +409,24 @@ export async function adminRoutes(app) {
       throw app.httpErrors.badRequest(err.message ?? 'Failed to send email')
     }
 
+    const sentAt = new Date()
+    for (const delivered of deliveredItems) {
+      await OrderItem.findByIdAndUpdate(delivered.id, { keySentAt: sentAt })
+    }
+
     order.emailSent = emailResult.status === 'sent'
     if (payload.markCompleted) order.orderStatus = 'completed'
     await order.save()
 
     const keySummary = deliveredItems
-      .filter((i) => i.licenseKey)
-      .map((i) => `${i.productName} activation code: ${i.licenseKey}`)
-      .join('\n')
+      .map((i) => `${i.productName} activation code: ${i.licenseKey}${i.downloadUrl ? `\nDownload: ${i.downloadUrl}` : ''}`)
+      .join('\n\n')
 
     await addOrderNote({
       orderId: order._id,
       authorId: request.user.sub,
       authorName: request.user.email ?? 'Admin',
-      content: `Product key(s) emailed to ${order.customerEmail} with ${emailResult.status === 'sent' ? 'attachments' : 'log only'}.\n${keySummary}`,
+      content: `Product key(s) manually emailed to ${order.customerEmail}.\n\n${keySummary}`,
       noteType: 'customer',
     })
 
