@@ -149,13 +149,32 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
     setSaving(true)
     setStatus('')
     try {
+      const itemKeys = {}
+      for (const item of order.items ?? []) {
+        const value = keyEdits[item.id]?.trim()
+        if (value) itemKeys[item.id] = value
+      }
+
+      if (!Object.keys(itemKeys).length) {
+        setStatus('Enter at least one activation key before sending.')
+        return
+      }
+
       const data = await dashboardApi(`/api/admin/orders/${orderId}/send-keys`, {
         method: 'POST',
-        body: JSON.stringify({ message: keyMessage || undefined, markCompleted: true }),
+        body: JSON.stringify({
+          message: keyMessage || undefined,
+          markCompleted: true,
+          itemKeys,
+        }),
       })
       setOrder(data.order)
       setKeyMessage('')
-      setStatus('Product key(s) emailed to customer')
+      setStatus(
+        data.email?.status === 'sent'
+          ? `Product key(s) emailed to ${order.customerEmail} with attachments`
+          : `Email logged but not sent — configure RESEND_API_KEY on the server`,
+      )
       onUpdated?.()
     } catch (err) {
       setStatus(err.message)
@@ -202,7 +221,9 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   const stats = order.customerStats ?? {}
   const billing = order.billing ?? {}
   const canRefund = order.paymentStatus === 'paid' && order.orderStatus !== 'refunded'
-  const canSendKeys = order.paymentStatus === 'paid' || order.orderStatus === 'processing'
+  const canSendKeys = order.paymentStatus === 'paid'
+    || order.orderStatus === 'processing'
+    || (order.items ?? []).some((item) => keyEdits[item.id]?.trim())
 
   return (
     <div>
@@ -349,7 +370,7 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
                 <Mail size={18} /> Send product key to customer
               </h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                Emails activation code(s) and download links to <strong>{order.customerEmail}</strong>. Marks order as completed.
+                Emails activation code(s) to <strong>{order.customerEmail}</strong> with attached license file(s) and download links. Keys entered above are saved automatically when you send.
               </p>
               <textarea
                 value={keyMessage}

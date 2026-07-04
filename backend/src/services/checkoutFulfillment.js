@@ -54,14 +54,22 @@ export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId
   if (razorpayPaymentId) order.razorpayPaymentId = razorpayPaymentId
   if (payuPaymentId) order.payuPaymentId = payuPaymentId
   order.licenseKey = primaryKey
-  order.emailSent = true
+  order.emailSent = false
   await order.save()
 
-  await sendOrderDeliveryEmail({
-    order: mapId(order),
-    items: deliveredItems,
-    confirmationCode: order.confirmationCode,
-  })
+  try {
+    const emailResult = await sendOrderDeliveryEmail({
+      order: mapId(order),
+      items: deliveredItems,
+      confirmationCode: order.confirmationCode,
+    })
+    if (emailResult.status === 'sent') {
+      order.emailSent = true
+      await order.save()
+    }
+  } catch (err) {
+    console.error('[fulfillment] email delivery failed:', err.message)
+  }
   await sendOrderWhatsApp({
     phone: order.customerPhone,
     order: mapId(order),

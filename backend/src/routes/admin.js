@@ -342,10 +342,23 @@ export async function adminRoutes(app) {
     const schema = z.object({
       message: z.string().max(1000).optional(),
       markCompleted: z.boolean().default(true),
+      itemKeys: z.record(z.string(), z.string()).optional(),
     })
     const payload = schema.parse(request.body ?? {})
     const order = await Order.findById(request.params.id)
     if (!order) return reply.notFound('Order not found')
+
+    if (payload.itemKeys) {
+      for (const [itemId, licenseKey] of Object.entries(payload.itemKeys)) {
+        const trimmed = licenseKey?.trim()
+        if (!trimmed) continue
+        const item = await OrderItem.findOne({ _id: itemId, orderId: order._id })
+        if (item) {
+          item.licenseKey = trimmed
+          await item.save()
+        }
+      }
+    }
 
     const items = await OrderItem.find({ orderId: order._id })
     const products = await Product.find({ _id: { $in: items.map((i) => i.productId) } })
@@ -354,7 +367,7 @@ export async function adminRoutes(app) {
     const deliveredItems = []
     for (const item of items) {
       let key = item.licenseKey
-      if (!key && order.paymentStatus === 'paid') {
+      if (!key && (order.paymentStatus === 'paid' || order.orderStatus === 'processing')) {
         key = await assignLicenseKey({
           productId: item.productId,
           variantId: item.variantId,
@@ -372,22 +385,25 @@ export async function adminRoutes(app) {
     }
 
     if (!deliveredItems.some((i) => i.licenseKey)) {
-      throw app.httpErrors.badRequest('No license keys available to send. Assign keys to line items first.')
+      throw app.httpErrors.badRequest('No license keys available to send. Enter and save activation keys on line items first.')
     }
 
     const primaryKey = deliveredItems.find((i) => i.licenseKey)?.licenseKey ?? order.licenseKey
-    if (primaryKey && !order.licenseKey) {
-      order.licenseKey = primaryKey
+    if (primaryKey) order.licenseKey = primaryKey
+
+    let emailResult
+    try {
+      emailResult = await sendAdminKeyDeliveryEmail({
+        order: mapId(order),
+        items: deliveredItems,
+        confirmationCode: order.confirmationCode,
+        customMessage: payload.message,
+      })
+    } catch (err) {
+      throw app.httpErrors.badRequest(err.message ?? 'Failed to send email')
     }
 
-    await sendAdminKeyDeliveryEmail({
-      order: mapId(order),
-      items: deliveredItems,
-      confirmationCode: order.confirmationCode,
-      customMessage: payload.message,
-    })
-
-    order.emailSent = true
+    order.emailSent = emailResult.status === 'sent'
     if (payload.markCompleted) order.orderStatus = 'completed'
     await order.save()
 
@@ -400,12 +416,12 @@ export async function adminRoutes(app) {
       orderId: order._id,
       authorId: request.user.sub,
       authorName: request.user.email ?? 'Admin',
-      content: `Product key(s) emailed to ${order.customerEmail}.\n${keySummary}`,
+      content: `Product key(s) emailed to ${order.customerEmail} with ${emailResult.status === 'sent' ? 'attachments' : 'log only'}.\n${keySummary}`,
       noteType: 'customer',
     })
 
     const detail = await loadAdminOrderDetail(order._id)
-    return { success: true, order: detail }
+    return { success: true, email: emailResult, order: detail }
   })
 
   app.post('/api/admin/orders/:id/refund', { preHandler: [app.requireAdmin] }, async (request, reply) => {

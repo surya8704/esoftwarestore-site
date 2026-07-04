@@ -37,7 +37,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
-        value: orders@esoftware.store
+        value: eSoftware Store <info@esoftwarestore.com>
       - key: DEFAULT_COUNTRY
         value: IN
       - key: DEFAULT_CURRENCY

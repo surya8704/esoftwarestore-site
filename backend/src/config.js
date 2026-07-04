@@ -21,7 +21,7 @@ export const config = {
     process.env.RENDER_EXTERNAL_URL ??
     `http://localhost:${process.env.PORT ?? 4000}`,
   resendApiKey: process.env.RESEND_API_KEY ?? '',
-  emailFrom: process.env.EMAIL_FROM ?? 'orders@esoftware.store',
+  emailFrom: process.env.EMAIL_FROM ?? 'eSoftware Store <info@esoftwarestore.com>',
   whatsappToken: process.env.WHATSAPP_TOKEN ?? '',
   whatsappPhoneId: process.env.WHATSAPP_PHONE_ID ?? '',
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',
