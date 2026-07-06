@@ -18,7 +18,14 @@ export async function dashboardApi(path, options = {}) {
 
   const text = await response.text()
   const data = text ? JSON.parse(text) : {}
-  if (!response.ok) throw new Error(data.message ?? data.error ?? 'Request failed')
+  if (!response.ok) {
+    const msg =
+      data.message ??
+      data.error?.message ??
+      (typeof data.error === 'string' ? data.error : null) ??
+      'Request failed'
+    throw new Error(msg)
+  }
   return data
 }
 
@@ -66,4 +73,11 @@ export const emptyVendorForm = {
   email: '',
   commissionRate: 15,
   password: 'Vendor@123',
+}
+
+export const emptyUserForm = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'customer',
 }

@@ -1,23 +1,27 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import i18n from '../i18n'
 import { api, setApiRegion } from '../lib/api'
-import { prefetchStaticCatalog } from '../lib/products'
 import {
-  detectRegionFromBrowser,
-  getRegionForSelection,
-  isRegionManual,
-  persistRegion,
-  readStoredRegion,
-} from '../lib/region'
+  clearAuthSession,
+  clearRememberedEmail,
+  persistAuthSession,
+  readAuthToken,
+  readCachedUser,
+} from '../lib/authStorage'
+import { prefetchStaticCatalog } from '../lib/products'
+import { detectRegionFromBrowser, readStoredRegion } from '../lib/region'
 import { applyTheme, getInitialTheme, persistTheme } from '../lib/theme'
 
 const AppContext = createContext(null)
 
 const stored = readStoredRegion()
-applyRegionState(stored, isRegionManual())
+applyRegionState(stored)
 
-function applyRegionState({ country, currency, locale }, manual = false) {
-  persistRegion({ country, currency, locale }, manual)
+function applyRegionState({ country, currency, locale }) {
+  localStorage.setItem('country', country)
+  localStorage.setItem('currency', currency)
+  localStorage.setItem('locale', locale)
+  localStorage.removeItem('regionManual')
   setApiRegion({ country, currency, locale })
   document.documentElement.lang = locale
   document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr'
@@ -36,38 +40,27 @@ async function syncCartRegion(country, currency) {
 }
 
 export function AppProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => readCachedUser())
+  const [authReady, setAuthReady] = useState(false)
   const [config, setConfig] = useState(null)
   const [cart, setCart] = useState(null)
   const [country, setCountry] = useState(stored.country)
   const [currency, setCurrency] = useState(stored.currency)
   const [locale, setLocale] = useState(stored.locale)
   const [theme, setThemeState] = useState(() => getInitialTheme())
-  const [regionAuto, setRegionAuto] = useState(!isRegionManual())
 
   const refreshCart = useCallback(async () => {
     const data = await api('/api/cart')
     setCart(data.cart)
   }, [])
 
-  const setRegion = useCallback(
-    async (partial, manual = true) => {
-      const nextCountry = partial.country ?? country
-      const nextLocale = partial.locale ?? locale
-      const resolved = partial.currency
-        ? { country: nextCountry, currency: partial.currency, locale: nextLocale }
-        : getRegionForSelection(nextCountry, nextLocale)
-
-      setCountry(resolved.country)
-      setCurrency(resolved.currency)
-      setLocale(resolved.locale)
-      setRegionAuto(!manual)
-      applyRegionState(resolved, manual)
-      await syncCartRegion(resolved.country, resolved.currency)
-      await refreshCart()
-    },
-    [country, locale, refreshCart],
-  )
+  const applyDetectedRegion = useCallback(async (region) => {
+    applyRegionState(region)
+    setCountry(region.country)
+    setCurrency(region.currency)
+    setLocale(region.locale)
+    await syncCartRegion(region.country, region.currency)
+  }, [])
 
   useEffect(() => {
     applyTheme(theme)
@@ -106,82 +99,82 @@ export function AppProvider({ children }) {
   useEffect(() => {
     let cancelled = false
 
-    async function refineRegion() {
-      if (isRegionManual()) return
-
+    async function detectRegion() {
       try {
         const region = await api('/api/geo')
-        if (cancelled) return
-        if (
-          region.country !== country ||
-          region.currency !== currency ||
-          region.locale !== locale
-        ) {
-          applyRegionState(region, false)
-          setCountry(region.country)
-          setCurrency(region.currency)
-          setLocale(region.locale)
-          setRegionAuto(true)
-          await syncCartRegion(region.country, region.currency)
-        }
+        if (!cancelled) await applyDetectedRegion(region)
       } catch {
-        if (!cancelled) {
-          const fallback = detectRegionFromBrowser()
-          if (fallback.country !== country) {
-            applyRegionState(fallback, false)
-            setCountry(fallback.country)
-            setCurrency(fallback.currency)
-            setLocale(fallback.locale)
-          }
-        }
+        if (!cancelled) await applyDetectedRegion(detectRegionFromBrowser())
       }
     }
 
-    refineRegion()
+    detectRegion()
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount
-
-  useEffect(() => {
-    localStorage.setItem('country', country)
-    localStorage.setItem('currency', currency)
-    localStorage.setItem('locale', locale)
-  }, [country, currency, locale])
+  }, [applyDetectedRegion])
 
   useEffect(() => {
     api('/api/config').then(setConfig).catch(() => {})
-    const token = localStorage.getItem('token')
-    if (token) {
-      api('/api/auth/me').then((d) => setUser(d.user)).catch(() => localStorage.removeItem('token'))
+
+    const token = readAuthToken()
+    if (!token) {
+      setAuthReady(true)
+      refreshCart().catch(() => {})
+      return
     }
-    refreshCart().catch(() => {})
+
+    api('/api/auth/me')
+      .then((data) => {
+        setUser(data.user)
+        persistAuthSession({ token, user: data.user })
+      })
+      .catch(() => {
+        clearAuthSession()
+        setUser(null)
+      })
+      .finally(() => {
+        setAuthReady(true)
+        refreshCart().catch(() => {})
+      })
   }, [refreshCart])
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, { remember = true } = {}) => {
+    const normalizedEmail = email.trim().toLowerCase()
     const data = await api('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      body: JSON.stringify({ email: normalizedEmail, password }),
     })
-    localStorage.setItem('token', data.token)
+    persistAuthSession({
+      token: data.token,
+      user: data.user,
+      email: remember ? normalizedEmail : undefined,
+    })
+    if (!remember) clearRememberedEmail()
     setUser(data.user)
     return data
   }, [])
 
-  const signup = useCallback(async (payload) => {
+  const signup = useCallback(async (payload, { remember = true } = {}) => {
+    const normalizedEmail = payload.email?.trim().toLowerCase()
     const data = await api('/api/auth/signup', {
       method: 'POST',
       body: JSON.stringify({
         ...payload,
-        email: payload.email?.trim().toLowerCase(),
+        email: normalizedEmail,
         name: payload.name?.trim(),
       }),
     })
-    localStorage.setItem('token', data.token)
+    persistAuthSession({
+      token: data.token,
+      user: data.user,
+      email: remember ? normalizedEmail : undefined,
+    })
+    if (!remember) clearRememberedEmail()
     setUser(data.user)
     return data
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token')
+    clearAuthSession()
     setUser(null)
   }, [])
 
@@ -201,16 +194,12 @@ export function AppProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
+      authReady,
       config,
       cart,
       country,
-      setCountry,
       currency,
-      setCurrency,
       locale,
-      setLocale,
-      setRegion,
-      regionAuto,
       theme,
       setTheme,
       toggleTheme,
@@ -222,7 +211,7 @@ export function AppProvider({ children }) {
       refreshCart,
     }),
     [
-      user, config, cart, country, currency, locale, setRegion, regionAuto,
+      user, authReady, config, cart, country, currency, locale,
       theme, setTheme, toggleTheme, refreshCart, removeFromCart, login, signup, logout,
     ],
   )

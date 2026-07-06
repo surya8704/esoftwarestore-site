@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Heart, Headphones, Menu, Search, Shield, ShoppingCart, Sparkles, User, X, Zap } from 'lucide-react'
+import { Heart, Headphones, Menu, Package, Search, Shield, ShoppingCart, Sparkles, User, X, Zap } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getInstantProducts, loadProducts } from '../lib/products'
@@ -14,7 +14,6 @@ import { useApp } from '../context/AppContext'
 import CartDrawer from './CartDrawer'
 import ThemeToggle from './ThemeToggle'
 import ChatWidget from './ChatWidget'
-import RegionSelector from './RegionSelector'
 import MobileBottomNav from './MobileBottomNav'
 import StoreLogo from './StoreLogo'
 
@@ -28,7 +27,7 @@ function navLinkClass(active) {
 
 export default function Layout({ children }) {
   const { t } = useTranslation()
-  const { cart, currency, country, locale, refreshCart, removeFromCart } = useApp()
+  const { cart, currency, country, locale, refreshCart, removeFromCart, user } = useApp()
   const [cartOpen, setCartOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -111,7 +110,7 @@ export default function Layout({ children }) {
         <div className="store-container flex flex-wrap items-center justify-center gap-x-4 gap-y-1 py-2.5">
           <span className="inline-flex items-center gap-1.5">
             <Zap size={13} className="text-[#fbbf24]" />
-            Instant digital delivery
+            Digital superfast delivery
           </span>
           <span className="hidden sm:inline text-white/30">|</span>
           <span className="inline-flex items-center gap-1.5">
@@ -153,7 +152,6 @@ export default function Layout({ children }) {
           </form>
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            <RegionSelector />
             <ThemeToggle />
             <button
               type="button"
@@ -178,6 +176,15 @@ export default function Layout({ children }) {
             <button type="button" className="hidden rounded-full p-2.5 hover:bg-store-hover sm:block transition-colors" aria-label="Wishlist">
               <Heart size={20} className="text-store-muted" />
             </button>
+            {user ? (
+              <Link
+                to="/orders"
+                className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition-colors hover:bg-store-primary-muted hover:text-[#f97316] ${location.pathname === '/orders' ? 'bg-store-primary-muted text-[#f97316]' : ''}`}
+              >
+                <Package size={20} />
+                <span className="hidden sm:inline">My orders</span>
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={() => setCartOpen(true)}
@@ -267,6 +274,15 @@ export default function Layout({ children }) {
               >
                 Checkout
               </Link>
+              {user ? (
+                <Link
+                  to="/orders"
+                  className={`rounded-lg px-3 py-2.5 ${navLinkClass(location.pathname === '/orders')}`}
+                  onClick={closeMenus}
+                >
+                  My orders
+                </Link>
+              ) : null}
               <Link
                 to="/account"
                 className={`rounded-lg px-3 py-2.5 ${navLinkClass(location.pathname === '/account')}`}
@@ -377,6 +393,7 @@ export default function Layout({ children }) {
       <MobileBottomNav
         itemCount={itemCount}
         onCart={() => setCartOpen(true)}
+        user={user}
       />
     </div>
   )

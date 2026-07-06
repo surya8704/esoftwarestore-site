@@ -22,6 +22,10 @@ export default function CheckoutCompletePage() {
         if (cancelled) return
         if (data.paid && data.delivery) {
           setDelivery(data.delivery)
+        } else if (data.cancelled || data.paymentStatus === 'cancelled') {
+          setError('Payment was cancelled. No charge was made.')
+        } else if (data.paymentStatus === 'failed') {
+          setError('Payment failed. Please try checkout again.')
         } else {
           setError('Payment is still processing. Refresh in a moment or check your email.')
         }
@@ -68,7 +72,7 @@ export default function CheckoutCompletePage() {
         </code>
         <p className="mt-4 font-mono text-lg">{delivery.licenseKey}</p>
         <p className="mt-4 text-sm text-store-muted">Check your email for the activation key and download link.</p>
-        <button type="button" onClick={() => navigate('/account')} className="btn-store-primary mt-8">
+        <button type="button" onClick={() => navigate('/orders')} className="btn-store-primary mt-8">
           View my orders
         </button>
       </div>

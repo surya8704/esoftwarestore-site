@@ -12,9 +12,14 @@ import {
 } from '../db/models.js'
 import { getAiSupportReply, getTelephonicActivationScript } from '../services/ai.js'
 import { sendAdminKeyDeliveryEmail } from '../services/email.js'
-import { addOrderNote, getCustomerStats, loadAdminOrderDetail } from '../services/orders.js'
-import { captureOrderPaymentFees, resolveOrderPaymentBreakdown, summarizePaymentBreakdowns } from '../services/paymentFees.js'
-import { processOrderRefund } from '../services/refunds.js'
+import { addOrderNote, getCustomerStats, listAdminCustomers, loadAdminOrderDetail, PAID_ORDER_DB_FILTER } from '../services/orders.js'
+import {
+  isGatewayPaymentConfirmed,
+  reconcileOrderPayment,
+  resolveOrderPaymentBreakdown,
+  summarizePaymentBreakdowns,
+} from '../services/paymentFees.js'
+import { canProcessOrderRefund, getRefundableAmount, processOrderRefund, roundMoney } from '../services/refunds.js'
 import { generateConfirmationCode } from '../lib/utils.js'
 import { hashPassword } from '../db/seed.js'
 import { normalizeProduct, productSchema, vendorStats } from './vendor.js'
@@ -36,6 +41,11 @@ async function mapOrderListRow(order) {
   }
 }
 
+const CONFIRMED_PAID_ORDER_FILTER = {
+  ...PAID_ORDER_DB_FILTER,
+  gatewayPaymentStatus: { $in: ['captured', 'success', 'paid', 'wallet'] },
+}
+
 export async function adminRoutes(app) {
   app.get('/api/admin/overview', { preHandler: [app.requireAdmin] }, async () => {
     const [
@@ -51,11 +61,14 @@ export async function adminRoutes(app) {
     ] = await Promise.all([
       Product.countDocuments(),
       Order.countDocuments(),
-      Order.countDocuments({ paymentStatus: 'paid' }),
-      Order.countDocuments({ paymentStatus: { $nin: ['paid', 'refunded', 'cancelled'] } }),
+      Order.countDocuments(CONFIRMED_PAID_ORDER_FILTER),
+      Order.countDocuments({ paymentStatus: { $nin: ['paid', 'refunded', 'cancelled', 'failed'] } }),
       User.countDocuments(),
       Vendor.countDocuments(),
-      Order.aggregate([{ $match: { paymentStatus: 'paid' } }, { $group: { _id: null, revenue: { $sum: '$total' } } }]),
+      Order.aggregate([
+        { $match: CONFIRMED_PAID_ORDER_FILTER },
+        { $group: { _id: null, revenue: { $sum: '$amountPaid' }, fallbackRevenue: { $sum: '$total' } } },
+      ]),
       VendorPayout.aggregate([{ $match: { status: 'pending' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       VendorPayout.aggregate([{ $match: { status: 'paid' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
     ])
@@ -67,10 +80,130 @@ export async function adminRoutes(app) {
       pendingOrders: pendingOrderCount,
       totalUsers: userCount,
       totalVendors: vendorCount,
-      revenue: Number(revenueResult[0]?.revenue ?? 0),
+      revenue: Number(revenueResult[0]?.revenue ?? revenueResult[0]?.fallbackRevenue ?? 0),
       pendingVendorPayouts: Number(pendingPayouts[0]?.total ?? 0),
       paidVendorPayouts: Number(paidPayouts[0]?.total ?? 0),
     }
+  })
+
+  app.get('/api/admin/users', { preHandler: [app.requireAdmin] }, async () => {
+    const users = await User.find().sort({ createdAt: -1 }).limit(500)
+    return {
+      users: users.map((user) => ({
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        countryCode: user.countryCode,
+        walletBalance: user.walletBalance,
+        createdAt: user.createdAt,
+      })),
+    }
+  })
+
+  app.post('/api/admin/users', { preHandler: [app.requireAdmin] }, async (request) => {
+    const schema = z.object({
+      name: z.string().min(2).max(120),
+      email: z.string().email(),
+      password: z.string().min(6),
+      role: z.enum(['customer', 'admin', 'vendor']).default('customer'),
+      countryCode: z.string().length(2).optional(),
+      locale: z.string().max(10).optional(),
+    })
+    const payload = schema.parse(request.body)
+    const email = payload.email.trim().toLowerCase()
+
+    const existing = await User.findOne({ email })
+    if (existing) throw app.httpErrors.conflict('Email already registered')
+
+    const user = await User.create({
+      name: payload.name.trim(),
+      email,
+      passwordHash: hashPassword(payload.password),
+      role: payload.role,
+      countryCode: payload.countryCode ?? 'IN',
+      locale: payload.locale ?? 'en',
+      affiliateCode: payload.role === 'customer' ? `REF${Date.now().toString(36).slice(-6).toUpperCase()}` : undefined,
+    })
+
+    return {
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+      },
+    }
+  })
+
+  app.patch('/api/admin/users/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const schema = z.object({
+      name: z.string().min(2).max(120).optional(),
+      email: z.string().email().optional(),
+      role: z.enum(['customer', 'admin', 'vendor']).optional(),
+      password: z.string().min(6).optional(),
+    })
+    const payload = schema.parse(request.body ?? {})
+    const user = await User.findById(request.params.id)
+    if (!user) return reply.notFound('User not found')
+
+    if (payload.email) {
+      const email = payload.email.trim().toLowerCase()
+      const duplicate = await User.findOne({ email, _id: { $ne: user._id } })
+      if (duplicate) throw app.httpErrors.conflict('Email already in use')
+      user.email = email
+    }
+
+    if (payload.name) user.name = payload.name.trim()
+
+    if (payload.role && payload.role !== user.role) {
+      if (user._id.toString() === request.user.sub && payload.role !== 'admin') {
+        throw app.httpErrors.badRequest('You cannot remove your own admin role')
+      }
+      if (user.role === 'admin' && payload.role !== 'admin') {
+        const adminCount = await User.countDocuments({ role: 'admin' })
+        if (adminCount <= 1) {
+          throw app.httpErrors.badRequest('Cannot change role of the last admin account')
+        }
+      }
+      user.role = payload.role
+    }
+
+    if (payload.password) {
+      user.passwordHash = hashPassword(payload.password)
+    }
+
+    await user.save()
+
+    return {
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt,
+      },
+    }
+  })
+
+  app.delete('/api/admin/users/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const user = await User.findById(request.params.id)
+    if (!user) return reply.notFound('User not found')
+
+    if (user._id.toString() === request.user.sub) {
+      throw app.httpErrors.badRequest('You cannot delete your own account')
+    }
+
+    if (user.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' })
+      if (adminCount <= 1) {
+        throw app.httpErrors.badRequest('Cannot delete the last admin account')
+      }
+    }
+
+    await User.findByIdAndDelete(user._id)
+    return { success: true }
   })
 
   app.get('/api/admin/vendors', { preHandler: [app.requireAdmin] }, async () => {
@@ -251,17 +384,33 @@ export async function adminRoutes(app) {
 
   app.get('/api/admin/orders', { preHandler: [app.requireAdmin] }, async (request) => {
     const email = request.query?.email
-    const filter = { paymentStatus: 'paid' }
+    const filter = { ...PAID_ORDER_DB_FILTER }
     if (email) filter.customerEmail = String(email).toLowerCase()
     const result = await Order.find(filter).sort({ createdAt: -1 }).limit(200)
-    const orders = await Promise.all(result.map(mapOrderListRow))
-    const breakdowns = orders.map((o) => o.payment)
+
+    const orders = []
+    for (const order of result) {
+      const method = (order.paymentMethod ?? '').toLowerCase()
+      if (method === 'razorpay' && (order.razorpayPaymentId || order.paymentStatus === 'paid')) {
+        await reconcileOrderPayment(order, { persist: true })
+      } else if (order.paymentStatus === 'paid' && !isGatewayPaymentConfirmed(order)) {
+        await reconcileOrderPayment(order, { persist: true })
+      }
+      if (isGatewayPaymentConfirmed(order)) {
+        orders.push(await mapOrderListRow(order))
+      }
+    }
+
+    const breakdowns = orders.map((o) => o.payment).filter((p) => p.paymentConfirmed)
     const summary = summarizePaymentBreakdowns(breakdowns)
     return { orders, summary: { ...summary, count: orders.length } }
   })
 
   app.get('/api/admin/orders/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
-    const detail = await loadAdminOrderDetail(request.params.id)
+    const order = await Order.findById(request.params.id)
+    if (!order) return reply.notFound('Order not found')
+    await reconcileOrderPayment(order, { persist: true })
+    const detail = await loadAdminOrderDetail(order._id)
     if (!detail) return reply.notFound('Order not found')
     return { order: detail }
   })
@@ -498,38 +647,87 @@ export async function adminRoutes(app) {
     const order = await Order.findById(request.params.id)
     if (!order) return reply.notFound('Order not found')
 
-    if (order.paymentStatus !== 'paid') {
-      throw app.httpErrors.badRequest('Only paid orders can be refunded')
+    await reconcileOrderPayment(order, { persist: true })
+
+    const eligibility = canProcessOrderRefund(order)
+    if (!eligibility.ok) {
+      throw app.httpErrors.badRequest(eligibility.reason)
     }
 
-    const result = await processOrderRefund(order, payload)
+    let result
+    try {
+      result = await processOrderRefund(order, payload)
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message ?? 'Refund failed')
+    }
 
-    order.paymentStatus = 'refunded'
-    order.orderStatus = 'refunded'
-    order.refundAmount = result.amount
+    const paidTotal = roundMoney(order.amountPaid ?? order.total)
+    const newTotalRefunded = roundMoney((order.refundAmount ?? 0) + result.amount)
+    const fullyRefunded = newTotalRefunded >= paidTotal - 0.01
+
+    order.refundAmount = newTotalRefunded
     order.refundId = result.refundId
-    order.refundReason = payload.reason ?? ''
+    order.refundReason = payload.reason ?? result.reason ?? ''
     order.refundedAt = new Date()
+
+    if (fullyRefunded) {
+      order.paymentStatus = 'refunded'
+      order.orderStatus = 'refunded'
+      order.gatewayPaymentStatus = 'refunded'
+    }
+
     await order.save()
 
+    const refundLabel = fullyRefunded ? 'Refund' : 'Partial refund'
     await addOrderNote({
       orderId: order._id,
       authorId: request.user.sub,
       authorName: request.user.email ?? 'Admin',
-      content: `Refund of ${result.amount} processed via ${result.gateway}. Ref ID: ${result.refundId}${payload.reason ? `. Reason: ${payload.reason}` : ''}`,
+      content: `${refundLabel} of ${result.amount} processed via ${result.gateway}. Ref ID: ${result.refundId}${payload.reason ? `. Reason: ${payload.reason}` : ''}${fullyRefunded ? '' : `. Remaining refundable: ${getRefundableAmount(order)}`}`,
       noteType: 'private',
     })
 
     const detail = await loadAdminOrderDetail(order._id)
-    return { success: true, refund: result, order: detail }
+    return { success: true, refund: { ...result, fullyRefunded }, order: detail }
+  })
+
+  app.get('/api/admin/customers', { preHandler: [app.requireAdmin] }, async (request) => {
+    const search = typeof request.query.search === 'string' ? request.query.search : ''
+    const gmailOnly = request.query.gmail === '1' || request.query.gmail === 'true'
+    const customers = await listAdminCustomers({ search, gmailOnly })
+    return { customers }
   })
 
   app.get('/api/admin/customers/:email', { preHandler: [app.requireAdmin] }, async (request) => {
     const email = decodeURIComponent(request.params.email)
     const stats = await getCustomerStats(email)
-    const orders = await Order.find({ customerEmail: email }).sort({ createdAt: -1 }).limit(50)
-    const orderRows = await Promise.all(orders.map(mapOrderListRow))
-    return { email, stats, orders: orderRows }
+    const result = await Order.find({
+      customerEmail: new RegExp(`^${email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+      ...PAID_ORDER_DB_FILTER,
+    }).sort({ createdAt: -1 }).limit(100)
+
+    const orderRows = []
+    for (const order of result) {
+      const method = (order.paymentMethod ?? '').toLowerCase()
+      if (method === 'razorpay' && (order.razorpayPaymentId || order.paymentStatus === 'paid')) {
+        await reconcileOrderPayment(order, { persist: true })
+      } else if (order.paymentStatus === 'paid' && !isGatewayPaymentConfirmed(order)) {
+        await reconcileOrderPayment(order, { persist: true })
+      }
+      if (isGatewayPaymentConfirmed(order)) {
+        orderRows.push(await mapOrderListRow(order))
+      }
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() })
+    return {
+      email,
+      user: user
+        ? { id: user._id.toString(), name: user.name, email: user.email, role: user.role, createdAt: user.createdAt }
+        : null,
+      stats,
+      orders: orderRows,
+    }
   })
 }
 

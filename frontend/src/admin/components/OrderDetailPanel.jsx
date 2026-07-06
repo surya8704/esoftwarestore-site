@@ -137,7 +137,7 @@ function buildItemDetailsPayload(itemEdits) {
   return itemDetails
 }
 
-export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdated }) {
+export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdated, embedded = false }) {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -147,6 +147,8 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   const [noteText, setNoteText] = useState('')
   const [itemEdits, setItemEdits] = useState({})
   const [refundReason, setRefundReason] = useState('')
+  const [refundAmountInput, setRefundAmountInput] = useState('')
+  const [refundMode, setRefundMode] = useState('full')
   const [thankYouEmail, setThankYouEmail] = useState('')
   const [markCompleted, setMarkCompleted] = useState(true)
 
@@ -163,6 +165,9 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
       }
       setItemEdits(edits)
       setThankYouEmail(buildThankYouDraft(data.order))
+      const maxRefund = data.order.payment?.refundableAmount ?? data.order.payment?.amountPaid ?? data.order.total ?? 0
+      setRefundAmountInput(String(maxRefund))
+      setRefundMode('full')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -324,15 +329,42 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
   }
 
   const processRefund = async () => {
-    if (!window.confirm(`Refund ${formatMoney(order.total)} via ${paymentLabel(order)}?`)) return
+    const paymentInfo = order?.payment ?? {}
+    const orderCurrency = paymentInfo.currency ?? order?.currency ?? 'INR'
+    const maxRefundable = paymentInfo.refundableAmount ?? paymentInfo.amountPaid ?? order?.total ?? 0
+    const parsedAmount = Number(refundAmountInput)
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setStatus('Enter a valid refund amount greater than zero')
+      return
+    }
+    if (parsedAmount > maxRefundable + 0.001) {
+      setStatus(`Refund amount cannot exceed ${formatMoney(maxRefundable, orderCurrency)}`)
+      return
+    }
+
+    const isPartial = parsedAmount < maxRefundable - 0.001
+    const confirmText = isPartial
+      ? `Refund ${formatMoney(parsedAmount, orderCurrency)} (partial) of ${formatMoney(maxRefundable, orderCurrency)} via ${paymentLabel(order)}?`
+      : `Refund ${formatMoney(parsedAmount, orderCurrency)} via ${paymentLabel(order)}? This cannot be undone.`
+
+    if (!window.confirm(confirmText)) return
     setSaving(true)
+    setStatus('')
     try {
       const data = await dashboardApi(`/api/admin/orders/${orderId}/refund`, {
         method: 'POST',
-        body: JSON.stringify({ reason: refundReason || undefined }),
+        body: JSON.stringify({
+          amount: Math.round(parsedAmount * 100) / 100,
+          reason: refundReason.trim() || undefined,
+        }),
       })
       setOrder(data.order)
-      setStatus(`Refund processed (${data.refund?.gateway})`)
+      setRefundReason('')
+      const nextMax = data.order.payment?.refundableAmount ?? 0
+      setRefundAmountInput(String(nextMax || ''))
+      setRefundMode(nextMax > 0 ? 'full' : 'full')
+      const label = data.refund?.fullyRefunded ? 'Refund' : 'Partial refund'
+      setStatus(`${label} of ${formatMoney(data.refund?.amount ?? parsedAmount, orderCurrency)} via ${data.refund?.gateway}. Ref ID: ${data.refund?.refundId ?? '—'}`)
       onUpdated?.()
     } catch (err) {
       setStatus(err.message)
@@ -345,30 +377,54 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
 
   if (error || !order) {
     return (
-      <div>
-        <button type="button" onClick={onBack} className="mb-4 text-sm font-semibold text-sky-600">
-          ← Back to orders
-        </button>
+      <div className={embedded ? 'p-4' : ''}>
+        {!embedded ? (
+          <button type="button" onClick={onBack} className="mb-4 text-sm font-semibold text-sky-600">
+            ← Back to orders
+          </button>
+        ) : null}
         <p className="text-sm text-rose-500">{error || 'Order not found'}</p>
       </div>
     )
   }
 
   const stats = order.customerStats ?? {}
-  const canRefund = order.paymentStatus === 'paid' && order.orderStatus !== 'refunded'
-  const showDelivery = !['cancelled', 'refunded'].includes(order.orderStatus)
   const payment = order.payment ?? {}
+  const maxRefundable = payment.refundableAmount ?? payment.amountPaid ?? order.total
+  const totalRefunded = payment.totalRefunded ?? order.refundAmount ?? 0
+  const parsedRefundAmount = Number(refundAmountInput)
+  const refundPreview = Number.isFinite(parsedRefundAmount) && parsedRefundAmount > 0
+    ? Math.min(parsedRefundAmount, maxRefundable)
+    : maxRefundable
+  const canRefund = payment.canRefund ?? (payment.paymentConfirmed && order.paymentStatus === 'paid' && order.orderStatus !== 'refunded')
+  const isFullyRefunded = order.paymentStatus === 'refunded' || order.orderStatus === 'refunded'
+  const hasPartialRefund = totalRefunded > 0 && !isFullyRefunded
+  const showDelivery = !['cancelled', 'refunded'].includes(order.orderStatus)
   const currency = payment.currency ?? order.currency ?? 'INR'
 
-  return (
-    <div>
-      <button type="button" onClick={onBack} className="mb-4 text-sm font-semibold text-sky-600">
-        ← Back to orders
-      </button>
+  const setFullRefundAmount = () => {
+    setRefundMode('full')
+    setRefundAmountInput(String(maxRefundable))
+  }
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+  const setPartialRefundMode = () => {
+    setRefundMode('partial')
+    if (refundMode === 'full') {
+      setRefundAmountInput('')
+    }
+  }
+
+  return (
+    <div className={embedded ? 'rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/40 sm:p-6' : ''}>
+      {!embedded ? (
+        <button type="button" onClick={onBack} className="mb-4 text-sm font-semibold text-sky-600">
+          ← Back to orders
+        </button>
+      ) : null}
+
+      <div className={`flex flex-wrap items-start justify-between gap-4 ${embedded ? 'mb-4' : 'mb-6'}`}>
         <div>
-          <h2 className="text-2xl font-bold">Order #{shortId(order.id)}</h2>
+          <h2 className={embedded ? 'text-lg font-bold' : 'text-2xl font-bold'}>Order #{shortId(order.id)}</h2>
           <p className="mt-1 text-sm text-slate-500">{order.customerEmail} • {formatDate(order.createdAt)}</p>
         </div>
         <div className="flex gap-2">
@@ -400,13 +456,12 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
             </div>
           </section>
 
-          {order.paymentStatus === 'paid' ? (
+          {payment.paymentConfirmed ? (
             <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
               <h3 className="font-bold">Payment breakdown</h3>
               <p className="mt-1 text-xs text-slate-500">
-                Via {payment.feeProvider ?? order.paymentMethod ?? '—'}
+                {payment.feeProvider ?? order.paymentMethod} • {payment.gatewayPaymentStatus ?? 'captured'}
                 {order.razorpayPaymentId ? ` • ${order.razorpayPaymentId}` : ''}
-                {order.payuPaymentId ? ` • PayU ${order.payuPaymentId}` : ''}
               </p>
               <dl className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/30">
@@ -429,7 +484,21 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
                 </div>
               </dl>
             </section>
-          ) : null}
+          ) : (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <h3 className="font-bold text-amber-900 dark:text-amber-100">Payment not completed</h3>
+              <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+                {payment.message ?? 'This order has not received a confirmed payment from the gateway yet.'}
+              </p>
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                Status: {payment.gatewayPaymentStatus ?? order.paymentStatus ?? 'pending'}
+                {order.razorpayPaymentId ? ` • Ref ${order.razorpayPaymentId}` : ''}
+              </p>
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                Payment breakdown and net payout will appear only after Razorpay/PayU/Stripe confirms the payment as captured.
+              </p>
+            </section>
+          )}
 
           {showDelivery ? (
             <section className="rounded-2xl border border-orange-200 bg-orange-50/40 p-5 dark:border-orange-900/40 dark:bg-orange-950/20">
@@ -603,16 +672,126 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
             <p className="mt-2 text-sm font-semibold">{order.customerEmail}</p>
             <dl className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-slate-500">Orders</dt><dd>{stats.totalOrders ?? 0}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Revenue</dt><dd>{formatMoney(stats.totalRevenue ?? 0)}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Paid</dt><dd>{stats.paidOrders ?? 0}</dd></div>
+              {(stats.currencyStats ?? []).length ? (
+                stats.currencyStats.map((row) => (
+                  <div key={row.currency} className="border-t border-slate-100 pt-2 dark:border-white/5">
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Revenue ({row.currency})</dt>
+                      <dd className="font-semibold">{formatMoney(row.totalRevenue, row.currency)}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">AOV ({row.currency})</dt>
+                      <dd>{formatMoney(row.averageOrderValue, row.currency)}</dd>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex justify-between"><dt className="text-slate-500">Revenue</dt><dd>{formatMoney(0, currency)}</dd></div>
+              )}
             </dl>
           </section>
 
           {canRefund ? (
             <section className="rounded-2xl border border-rose-200 p-5">
               <h3 className="font-bold text-rose-700">Refund</h3>
-              <button type="button" onClick={processRefund} disabled={saving} className="mt-3 w-full rounded-full border border-rose-300 py-2 text-sm font-semibold text-rose-700">
-                Refund {formatMoney(order.total)}
+              <p className="mt-1 text-xs text-slate-500">
+                Refund to the original payment method ({paymentLabel(order)}).
+              </p>
+              {hasPartialRefund ? (
+                <p className="mt-2 text-xs font-semibold text-amber-700">
+                  Already refunded {formatMoney(totalRefunded, currency)} • {formatMoney(maxRefundable, currency)} remaining
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">
+                  Maximum refundable: {formatMoney(maxRefundable, currency)}
+                </p>
+              )}
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={setFullRefundAmount}
+                  className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${refundMode === 'full' ? 'border-rose-400 bg-rose-50 text-rose-800' : 'border-slate-200 text-slate-600'}`}
+                >
+                  Full refund
+                </button>
+                <button
+                  type="button"
+                  onClick={setPartialRefundMode}
+                  className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${refundMode === 'partial' ? 'border-rose-400 bg-rose-50 text-rose-800' : 'border-slate-200 text-slate-600'}`}
+                >
+                  Partial refund
+                </button>
+              </div>
+
+              <label className="mt-3 block text-xs font-semibold text-slate-600">
+                Refund amount ({currency})
+                <input
+                  type="number"
+                  min="0.01"
+                  max={maxRefundable}
+                  step="0.01"
+                  value={refundAmountInput}
+                  onChange={(e) => {
+                    setRefundAmountInput(e.target.value)
+                    setRefundMode('partial')
+                  }}
+                  placeholder={`Up to ${maxRefundable}`}
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                />
+              </label>
+
+              <textarea
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                rows={2}
+                placeholder="Refund reason (optional, saved in order notes)"
+                className="mt-3 w-full rounded-xl border px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+              />
+              <button
+                type="button"
+                onClick={processRefund}
+                disabled={saving || !refundAmountInput || parsedRefundAmount <= 0}
+                className="mt-3 w-full rounded-full border border-rose-300 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50"
+              >
+                {refundPreview < maxRefundable - 0.001
+                  ? `Refund ${formatMoney(refundPreview, currency)} (partial)`
+                  : `Refund ${formatMoney(refundPreview, currency)}`}
               </button>
+            </section>
+          ) : isFullyRefunded ? (
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5 dark:border-rose-900/40 dark:bg-rose-950/20">
+              <h3 className="font-bold text-rose-800 dark:text-rose-100">Fully refunded</h3>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Total refunded</dt>
+                  <dd className="font-semibold">{formatMoney(order.refundAmount ?? totalRefunded, currency)}</dd>
+                </div>
+                {order.refundId ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-slate-500">Ref ID</dt>
+                    <dd className="break-all text-right font-mono text-xs">{order.refundId}</dd>
+                  </div>
+                ) : null}
+                {order.refundedAt ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-slate-500">Date</dt>
+                    <dd>{formatDate(order.refundedAt)}</dd>
+                  </div>
+                ) : null}
+                {order.refundReason ? (
+                  <div>
+                    <dt className="text-slate-500">Reason</dt>
+                    <dd className="mt-1 whitespace-pre-wrap">{order.refundReason}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+          ) : payment.refundBlockedReason ? (
+            <section className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
+              <h3 className="font-bold text-slate-700 dark:text-slate-200">Refund unavailable</h3>
+              <p className="mt-2 text-sm text-slate-500">{payment.refundBlockedReason}</p>
             </section>
           ) : null}
 

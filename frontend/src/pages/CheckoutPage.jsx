@@ -25,7 +25,7 @@ function Field({ label, required, children, className = '' }) {
 }
 
 export default function CheckoutPage() {
-  const { cart, refreshCart, currency, country, removeFromCart, user, signup, setRegion } = useApp()
+  const { cart, refreshCart, currency, country, removeFromCart, user, signup } = useApp()
   const [billing, setBilling] = useState(() => emptyBilling(country))
   const [removingId, setRemovingId] = useState(null)
   const [coupon, setCoupon] = useState('')
@@ -83,19 +83,6 @@ export default function CheckoutPage() {
     }))
   }, [country, user])
 
-  const handleCountryChange = async (countryCode) => {
-    setBilling((prev) => ({
-      ...prev,
-      countryCode,
-      state: countryCode === 'IN' ? prev.state : '',
-    }))
-    try {
-      await setRegion({ country: countryCode })
-    } catch {
-      /* pricing refresh optional */
-    }
-  }
-
   const handleRemove = async (itemId) => {
     setRemovingId(itemId)
     try {
@@ -128,6 +115,7 @@ export default function CheckoutPage() {
 
     setLoading(true)
     setError('')
+    let pendingOrderId = null
     try {
       if (billing.createAccount && !user) {
         await signup({
@@ -163,6 +151,7 @@ export default function CheckoutPage() {
           termsAccepted: true,
         }),
       })
+      pendingOrderId = orderData.order.id
 
       if (orderData.order.paymentStatus === 'paid') {
         setDelivery(orderData.order)
@@ -203,7 +192,18 @@ export default function CheckoutPage() {
       })
       setDelivery(verified.delivery)
     } catch (err) {
-      if (err.message !== 'Payment cancelled') {
+      if (pendingOrderId) {
+        api('/api/checkout/cancel-payment', {
+          method: 'POST',
+          body: JSON.stringify({
+            orderId: pendingOrderId,
+            reason: err.message || 'Payment cancelled',
+          }),
+        }).catch(() => {})
+      }
+      if (err.message === 'Payment cancelled') {
+        setError('Payment was cancelled. You can try again when ready.')
+      } else {
         setError(err.message)
       }
     } finally {
@@ -221,7 +221,7 @@ export default function CheckoutPage() {
           <code className="mt-1 inline-block rounded-lg bg-store-hover px-3 py-2 text-sm font-bold text-store-heading">{delivery.confirmationCode}</code>
           <p className="mt-4 font-mono text-lg">{delivery.licenseKey}</p>
           <p className="mt-4 text-sm text-store-muted">Check your email for the activation key and download link.</p>
-          <button type="button" onClick={() => navigate('/account')} className="btn-store-primary mt-8">
+          <button type="button" onClick={() => navigate('/orders')} className="btn-store-primary mt-8">
             View my orders
           </button>
         </div>
@@ -266,19 +266,8 @@ export default function CheckoutPage() {
             </div>
 
             <Field label="Country / Region" required>
-              <select
-                required
-                value={billing.countryCode}
-                onChange={(e) => handleCountryChange(e.target.value)}
-                className="store-input"
-                autoComplete="country"
-              >
-                {CHECKOUT_COUNTRIES.map((opt) => (
-                  <option key={opt.country} value={opt.country}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <div className="store-input bg-store-subtle text-store-body">{countryLabel}</div>
+              <p className="mt-1 text-xs text-store-muted">Set automatically from your location</p>
             </Field>
 
             <Field label="Street address" required>

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Eye, RefreshCw, Search } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp, RefreshCw, Search } from 'lucide-react'
 import { dashboardApi, formatMoney } from '../api'
 import OrderDetailPanel from '../components/OrderDetailPanel'
 
@@ -38,8 +38,12 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedId, setSelectedId] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
   const [searchEmail, setSearchEmail] = useState('')
+
+  const toggleExpanded = (id) => {
+    setExpandedId((current) => (current === id ? null : id))
+  }
 
   const load = useCallback(async (email) => {
     setLoading(true)
@@ -68,19 +72,11 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
 
   const handleSearch = (e) => {
     e.preventDefault()
+    setExpandedId(null)
     load(searchEmail.trim())
   }
 
-  if (isAdmin && selectedId) {
-    return (
-      <OrderDetailPanel
-        orderId={selectedId}
-        formatMoney={fmt}
-        onBack={() => setSelectedId(null)}
-        onUpdated={() => load(searchEmail.trim() || undefined)}
-      />
-    )
-  }
+  const adminColCount = 4
 
   return (
     <div>
@@ -152,26 +148,22 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
       {error ? <p className="mt-4 text-sm text-rose-500">{error}</p> : null}
       {loading ? <p className="mt-6 text-sm text-slate-500">Loading orders...</p> : null}
 
-      <div className="mt-6 overflow-x-auto">
-        <table className="w-full min-w-[1100px] text-left text-sm">
+      <div className="mt-6">
+        <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 dark:border-white/10">
-              <th className="py-3 pr-4">Order</th>
               <th className="py-3 pr-4">Date</th>
               <th className="py-3 pr-4">Customer</th>
               <th className="py-3 pr-4">Products</th>
-              {isAdmin ? (
+              {!isAdmin ? (
                 <>
-                  <th className="py-3 pr-4">Paid</th>
-                  <th className="py-3 pr-4">Gateway fee</th>
-                  <th className="py-3 pr-4">Net payout</th>
-                  <th className="py-3 pr-4">Gateway</th>
+                  <th className="py-3 pr-4">Amount</th>
+                  <th className="py-3 pr-4">Status</th>
+                  <th className="py-3">License</th>
                 </>
               ) : (
-                <th className="py-3 pr-4">Amount</th>
+                <th className="py-3 text-right"> </th>
               )}
-              <th className="py-3 pr-4">Status</th>
-              {isAdmin ? <th className="py-3">Actions</th> : <th className="py-3">License</th>}
             </tr>
           </thead>
           <tbody>
@@ -179,50 +171,84 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
               const payment = o.payment ?? {}
               const currency = payment.currency ?? o.currency ?? 'INR'
               const displayStatus = o.orderStatus ?? o.paymentStatus
+              const orderId = o.id ?? o.orderId
+              if (isAdmin && !payment.paymentConfirmed) return null
+              const isExpanded = expandedId === orderId
               return (
-                <tr key={o.id ?? `${o.orderId}-${o.productName}`} className="border-b border-slate-100 dark:border-white/5">
-                  <td className="py-3 pr-4 font-medium">#{shortId(o.orderId ?? o.id)}</td>
-                  <td className="py-3 pr-4 text-slate-500">{formatDate(o.createdAt)}</td>
-                  <td className="py-3 pr-4">{o.customerEmail ?? '—'}</td>
-                  <td className="py-3 pr-4 max-w-[180px] truncate">{o.productName ?? '—'}</td>
-                  {isAdmin ? (
-                    <>
-                      <td className="py-3 pr-4 font-semibold text-emerald-700">{money(payment.amountPaid ?? o.total, currency)}</td>
-                      <td className="py-3 pr-4 text-rose-600">
-                        {money((payment.gatewayFee ?? 0) + (payment.gatewayTax ?? 0), currency)}
-                        {payment.gatewayTax ? (
-                          <span className="block text-[10px] text-slate-400">
-                            fee {money(payment.gatewayFee, currency)} + tax {money(payment.gatewayTax, currency)}
+                <Fragment key={orderId}>
+                  <tr className="border-b border-slate-100 dark:border-white/5">
+                    <td className="py-3 pr-4 text-slate-500">{formatDate(o.createdAt)}</td>
+                    <td className="py-3 pr-4">{o.customerEmail ?? '—'}</td>
+                    <td className="py-3 pr-4">{o.productName ?? '—'}</td>
+                    {!isAdmin ? (
+                      <>
+                        <td className="py-3 pr-4">{fmt(o.total ?? o.amount ?? 0, currency)}</td>
+                        <td className="py-3 pr-4">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${statusBadge(displayStatus)}`}>
+                            {displayStatus?.replace('_', ' ') ?? 'unknown'}
                           </span>
-                        ) : null}
+                        </td>
+                        <td className="py-3 font-mono text-xs">{o.licenseKey ?? '—'}</td>
+                      </>
+                    ) : (
+                      <td className="py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(orderId)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700"
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          {isExpanded ? 'Hide' : 'Details'}
+                        </button>
                       </td>
-                      <td className="py-3 pr-4 font-semibold text-sky-700">{money(payment.netPayout ?? o.total, currency)}</td>
-                      <td className="py-3 pr-4 text-xs capitalize text-slate-500">
-                        {payment.feeProvider ?? o.paymentMethod ?? '—'}
+                    )}
+                  </tr>
+                  {isAdmin && isExpanded ? (
+                    <tr className="border-b border-slate-100 dark:border-white/5">
+                      <td colSpan={adminColCount} className="bg-slate-50 p-4 dark:bg-white/5">
+                        <div className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm dark:border-white/10 dark:bg-slate-900/40 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Order</p>
+                            <p className="mt-1 font-semibold">#{shortId(o.orderId ?? o.id)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Status</p>
+                            <p className="mt-1">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${statusBadge(displayStatus)}`}>
+                                {displayStatus?.replace('_', ' ') ?? 'unknown'}
+                              </span>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Customer paid</p>
+                            <p className="mt-1 font-semibold text-emerald-700">{money(payment.amountPaid ?? o.total, currency)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Gateway fee</p>
+                            <p className="mt-1 font-semibold text-rose-600">
+                              {money((payment.gatewayFee ?? 0) + (payment.gatewayTax ?? 0), currency)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Net payout</p>
+                            <p className="mt-1 font-semibold text-sky-700">{money(payment.netPayout ?? o.total, currency)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Gateway</p>
+                            <p className="mt-1 font-semibold capitalize">{payment.feeProvider ?? o.paymentMethod ?? '—'}</p>
+                          </div>
+                        </div>
+                        <OrderDetailPanel
+                          embedded
+                          orderId={orderId}
+                          formatMoney={fmt}
+                          onUpdated={() => load(searchEmail.trim() || undefined)}
+                        />
                       </td>
-                    </>
-                  ) : (
-                    <td className="py-3 pr-4">{fmt(o.total ?? o.amount ?? 0, currency)}</td>
-                  )}
-                  <td className="py-3 pr-4">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${statusBadge(displayStatus)}`}>
-                      {displayStatus?.replace('_', ' ') ?? 'unknown'}
-                    </span>
-                  </td>
-                  {isAdmin ? (
-                    <td className="py-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(o.id ?? o.orderId)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700"
-                      >
-                        <Eye size={12} /> View
-                      </button>
-                    </td>
-                  ) : (
-                    <td className="py-3 font-mono text-xs">{o.licenseKey ?? '—'}</td>
-                  )}
-                </tr>
+                    </tr>
+                  ) : null}
+                </Fragment>
               )
             })}
           </tbody>

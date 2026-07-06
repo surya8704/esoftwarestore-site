@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Headphones, Home, ShoppingCart, User } from 'lucide-react'
+import { Headphones, Home, Package, ShoppingCart, User } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 function navItemClass(active) {
@@ -8,12 +8,13 @@ function navItemClass(active) {
     : 'mobile-nav-item'
 }
 
-export default function MobileBottomNav({ itemCount, onCart }) {
+export default function MobileBottomNav({ itemCount, onCart, user }) {
   const { t } = useTranslation()
   const location = useLocation()
   const isShop = location.pathname === '/'
   const isSupport = location.pathname === '/support'
   const isAccount = location.pathname === '/account'
+  const isOrders = location.pathname === '/orders'
 
   return (
     <nav className="mobile-bottom-nav lg:hidden" aria-label="Mobile shortcuts">
@@ -36,6 +37,13 @@ export default function MobileBottomNav({ itemCount, onCart }) {
         ) : null}
         <span>{t('cart')}</span>
       </button>
+
+      {user ? (
+        <Link to="/orders" className={navItemClass(isOrders)} aria-current={isOrders ? 'page' : undefined}>
+          <Package size={22} strokeWidth={isOrders ? 2.5 : 2} />
+          <span>Orders</span>
+        </Link>
+      ) : null}
 
       <Link to="/support" className={navItemClass(isSupport)} aria-current={isSupport ? 'page' : undefined}>
         <Headphones size={22} strokeWidth={isSupport ? 2.5 : 2} />

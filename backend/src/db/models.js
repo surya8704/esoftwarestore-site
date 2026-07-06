@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   affiliateCode: { type: String, maxlength: 40 },
   referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   socialProvider: { type: String, maxlength: 40 },
+  googleId: { type: String, maxlength: 120 },
   createdAt: { type: Date, default: Date.now, required: true }
 })
 
@@ -149,6 +150,8 @@ const orderSchema = new mongoose.Schema({
   refundId: { type: String, maxlength: 120 },
   refundReason: { type: String, maxlength: 500 },
   refundedAt: Date,
+  gatewayPaymentStatus: { type: String, maxlength: 40 },
+  paidAt: Date,
   amountPaid: Number,
   gatewayFee: { type: Number, default: 0 },
   gatewayTax: { type: Number, default: 0 },

@@ -7,6 +7,35 @@ function normalizeEmail(email) {
   return String(email ?? '').trim().toLowerCase()
 }
 
+function userPayload(user) {
+  return {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    walletBalance: user.walletBalance,
+    affiliateCode: user.affiliateCode,
+    countryCode: user.countryCode,
+    locale: user.locale,
+  }
+}
+
+async function createCustomerWithAffiliate({ name, email, passwordHash, countryCode, locale, socialProvider }) {
+  const affiliateCode = `REF${Date.now().toString(36).slice(-6).toUpperCase()}`
+  const user = await User.create({
+    name: name.trim(),
+    email,
+    passwordHash,
+    role: 'customer',
+    countryCode: countryCode ?? 'IN',
+    locale: locale ?? 'en',
+    affiliateCode,
+    socialProvider,
+  })
+  await Affiliate.create({ userId: user._id, code: affiliateCode })
+  return user
+}
+
 export async function authRoutes(app) {
   app.post('/api/auth/signup', async (request, reply) => {
     const { name, email, password, countryCode, locale } = request.body ?? {}
@@ -21,29 +50,19 @@ export async function authRoutes(app) {
     const existing = await User.findOne({ email: normalizedEmail })
     if (existing) throw app.httpErrors.conflict('Email already registered')
 
-    const affiliateCode = `REF${Date.now().toString(36).slice(-6).toUpperCase()}`
-    const user = await User.create({
+    const user = await createCustomerWithAffiliate({
       name: name.trim(),
       email: normalizedEmail,
       passwordHash: hashPassword(password),
-      role: 'customer',
-      countryCode: countryCode ?? 'IN',
-      locale: locale ?? 'en',
-      affiliateCode,
+      countryCode,
+      locale,
     })
-    await Affiliate.create({ userId: user._id, code: affiliateCode })
 
-    const token = await reply.jwtSign({ sub: user._id.toString(), email: user.email, role: user.role })
-    return {
-      token,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        affiliateCode,
-      },
-    }
+    const token = await reply.jwtSign(
+      { sub: user._id.toString(), email: user.email, role: user.role },
+      { expiresIn: '30d' },
+    )
+    return { token, user: userPayload(user) }
   })
 
   app.post('/api/auth/login', async (request, reply) => {
@@ -58,18 +77,11 @@ export async function authRoutes(app) {
       throw app.httpErrors.unauthorized('Incorrect email or password')
     }
 
-    const token = await reply.jwtSign({ sub: user._id.toString(), email: user.email, role: user.role })
-    return {
-      token,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        walletBalance: user.walletBalance,
-        affiliateCode: user.affiliateCode,
-      },
-    }
+    const token = await reply.jwtSign(
+      { sub: user._id.toString(), email: user.email, role: user.role },
+      { expiresIn: '30d' },
+    )
+    return { token, user: userPayload(user) }
   })
 
   app.post('/api/auth/magic-link', async (request) => {
@@ -100,7 +112,10 @@ export async function authRoutes(app) {
       })
     }
 
-    const token = await reply.jwtSign({ sub: user._id.toString(), email: user.email, role: user.role })
+    const token = await reply.jwtSign(
+      { sub: user._id.toString(), email: user.email, role: user.role },
+      { expiresIn: '30d' },
+    )
     return {
       token,
       user: {
@@ -115,17 +130,6 @@ export async function authRoutes(app) {
   app.get('/api/auth/me', { preHandler: [app.authenticate] }, async (request) => {
     const user = await User.findById(request.user.sub)
     if (!user) throw app.httpErrors.notFound('User not found')
-    return {
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        walletBalance: user.walletBalance,
-        affiliateCode: user.affiliateCode,
-        countryCode: user.countryCode,
-        locale: user.locale,
-      },
-    }
+    return { user: userPayload(user) }
   })
 }

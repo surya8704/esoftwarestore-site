@@ -7,6 +7,7 @@ import ProductPage from './pages/ProductPage'
 import CheckoutPage from './pages/CheckoutPage'
 import CheckoutCompletePage from './pages/CheckoutCompletePage'
 import AccountPage from './pages/AccountPage'
+import OrdersPage from './pages/OrdersPage'
 import SupportPage from './pages/SupportPage'
 import GuidesPage from './pages/GuidesPage'
 import GuidePage from './pages/GuidePage'
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/checkout/complete" element={<CheckoutCompletePage />} />
         <Route path="/account" element={<AccountPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/guides" element={<GuidesPage />} />
         <Route path="/guides/:slug" element={<GuidePage />} />

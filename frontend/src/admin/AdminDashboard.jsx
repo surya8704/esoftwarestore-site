@@ -9,6 +9,7 @@ import {
   Receipt,
   ShoppingBag,
   Store,
+  UserCircle,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -18,6 +19,8 @@ import VendorsTab from './tabs/VendorsTab'
 import ProductsTab from './tabs/ProductsTab'
 import OrdersTab from './tabs/OrdersTab'
 import PayoutsTab from './tabs/PayoutsTab'
+import UsersTab from './tabs/UsersTab'
+import CustomersTab from './tabs/CustomersTab'
 import ThemeToggle from '../components/ThemeToggle'
 
 const ADMIN_TABS = [
@@ -25,7 +28,9 @@ const ADMIN_TABS = [
   { id: 'vendors', label: 'Vendors', icon: Building2 },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'orders', label: 'Orders', icon: ShoppingBag },
+  { id: 'customers', label: 'Customers', icon: UserCircle },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
+  { id: 'users', label: 'Users', icon: Users },
 ]
 
 const VENDOR_TABS = [
@@ -181,11 +186,13 @@ export default function AdminDashboard() {
         </aside>
 
         <div className="min-w-0 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5 sm:p-8">
-          {tab === 'overview' ? <OverviewTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
+          {tab === 'overview' ? <OverviewTab isAdmin={isAdmin} formatMoney={formatMoney} onNavigate={setTab} /> : null}
           {tab === 'vendors' && isAdmin ? <VendorsTab emptyVendorForm={emptyVendorForm} formatMoney={formatMoney} /> : null}
           {tab === 'products' ? <ProductsTab isAdmin={isAdmin} emptyProductForm={emptyProductForm} formatMoney={formatMoney} /> : null}
           {tab === 'orders' ? <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
+          {tab === 'customers' && isAdmin ? <CustomersTab formatMoney={formatMoney} /> : null}
           {tab === 'payouts' ? <PayoutsTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
+          {tab === 'users' && isAdmin ? <UsersTab currentUserId={user.id} /> : null}
         </div>
       </div>
     </section>

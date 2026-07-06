@@ -16,6 +16,8 @@ import {
 } from '../db/models.js'
 import { generateConfirmationCode } from '../lib/utils.js'
 import { fulfillPaidOrder } from '../services/checkoutFulfillment.js'
+import { listOrdersForUser, lookupOrdersByEmail } from '../services/customerOrders.js'
+import { isGatewayPaymentConfirmed, markOrderPaymentCancelled, reconcileOrderPayment, verifyRazorpayPaymentCaptured } from '../services/paymentFees.js'
 import {
   buildPayuPaymentParams,
   generatePayuTxnId,
@@ -23,6 +25,13 @@ import {
   validateResponseHash,
 } from '../services/payu.js'
 import { resolveProductPrice, validateCoupon } from '../services/pricing.js'
+
+function normalizePayuStatus(status) {
+  const value = String(status ?? '').toLowerCase()
+  if (value === 'success') return 'success'
+  if (value === 'failure' || value === 'failed') return 'failed'
+  return 'cancelled'
+}
 
 export async function checkoutRoutes(app) {
   const razorpay = new Razorpay({
@@ -267,15 +276,13 @@ export async function checkoutRoutes(app) {
 
     const order = await Order.findById(payload.orderId)
     if (!order) throw app.httpErrors.notFound('Order not found')
-    if (order.paymentStatus === 'paid') {
+
+    if (isGatewayPaymentConfirmed(order)) {
       const delivery = await fulfillPaidOrder(order)
       return { success: true, alreadyPaid: true, delivery }
     }
 
-    const needsRazorpayProof =
-      order.paymentMethod === 'razorpay' && order.total > 0 && order.paymentStatus !== 'paid'
-
-    if (needsRazorpayProof) {
+    if (order.paymentMethod === 'razorpay' && order.total > 0) {
       if (!payload.razorpayPaymentId || !payload.razorpayOrderId || !payload.razorpaySignature) {
         throw app.httpErrors.badRequest('Payment verification required')
       }
@@ -290,16 +297,39 @@ export async function checkoutRoutes(app) {
       if (expected !== payload.razorpaySignature) {
         throw app.httpErrors.unauthorized('Invalid payment signature')
       }
+
+      await verifyRazorpayPaymentCaptured(payload.razorpayPaymentId, order.razorpayOrderId)
+
+      const delivery = await fulfillPaidOrder(order, {
+        razorpayPaymentId: payload.razorpayPaymentId,
+      })
+
+      return { success: true, delivery }
     }
 
-    const delivery = await fulfillPaidOrder(order, {
-      razorpayPaymentId: payload.razorpayPaymentId,
+    if (order.total === 0 && (order.paymentMethod === 'wallet' || order.paymentStatus === 'paid')) {
+      const delivery = await fulfillPaidOrder(order)
+      return { success: true, delivery }
+    }
+
+    throw app.httpErrors.badRequest('Payment has not been completed')
+  })
+
+  app.post('/api/checkout/cancel-payment', async (request) => {
+    const schema = z.object({
+      orderId: z.string(),
+      reason: z.string().max(200).optional(),
     })
+    const payload = schema.parse(request.body ?? {})
+    const order = await Order.findById(payload.orderId)
+    if (!order) throw app.httpErrors.notFound('Order not found')
 
-    return {
-      success: true,
-      delivery,
+    if (isGatewayPaymentConfirmed(order)) {
+      throw app.httpErrors.badRequest('This order is already paid and cannot be cancelled')
     }
+
+    await markOrderPaymentCancelled(order, { persist: true, reason: payload.reason ?? 'Payment cancelled' })
+    return { success: true, orderId: order._id.toString(), paymentStatus: order.paymentStatus }
   })
 
   app.post('/api/checkout/payu/callback', async (request, reply) => {
@@ -325,6 +355,12 @@ export async function checkoutRoutes(app) {
     }
 
     if (body.status !== 'success') {
+      if (!isGatewayPaymentConfirmed(order)) {
+        order.paymentStatus = 'cancelled'
+        order.orderStatus = 'cancelled'
+        order.gatewayPaymentStatus = normalizePayuStatus(body.status)
+        await order.save()
+      }
       return reply.redirect(`${redirectBase}/checkout?payu=failed&orderId=${order._id}`)
     }
 
@@ -360,8 +396,17 @@ export async function checkoutRoutes(app) {
 
     if (!authorized) return reply.forbidden('Not allowed to view this order')
 
-    if (order.paymentStatus !== 'paid') {
-      return { paid: false, paymentStatus: order.paymentStatus }
+    if (order.paymentMethod === 'razorpay' && (order.razorpayPaymentId || order.paymentStatus === 'paid')) {
+      await reconcileOrderPayment(order, { persist: true })
+    }
+
+    if (!isGatewayPaymentConfirmed(order)) {
+      return {
+        paid: false,
+        paymentStatus: order.paymentStatus,
+        gatewayPaymentStatus: order.gatewayPaymentStatus ?? null,
+        cancelled: order.paymentStatus === 'cancelled' || order.orderStatus === 'cancelled',
+      }
     }
 
     const items = await OrderItem.find({ orderId: order._id })
@@ -379,29 +424,20 @@ export async function checkoutRoutes(app) {
     }
   })
 
+  app.post('/api/orders/lookup', async (request) => {
+    const { email, confirmationCode } = request.body ?? {}
+    try {
+      const orders = await lookupOrdersByEmail(email, { confirmationCode })
+      return { orders }
+    } catch (error) {
+      throw app.httpErrors.notFound(error.message ?? 'No orders found')
+    }
+  })
+
   app.get('/api/orders', { preHandler: [app.authenticate] }, async (request) => {
     const user = await User.findById(request.user.sub)
     if (!user) throw app.httpErrors.notFound('User not found')
-
-    await Order.updateMany(
-      { customerEmail: user.email, userId: null },
-      { userId: user._id },
-    )
-
-    const result = await Order.find({
-      $or: [{ userId: user._id }, { customerEmail: user.email }],
-    }).sort({ createdAt: -1 })
-
-    const orders = await Promise.all(
-      result.map(async (order) => {
-        const items = await OrderItem.find({ orderId: order._id })
-        return {
-          ...mapId(order),
-          items: items.map(mapId),
-        }
-      }),
-    )
-
+    const orders = await listOrdersForUser(user)
     return { orders }
   })
 
