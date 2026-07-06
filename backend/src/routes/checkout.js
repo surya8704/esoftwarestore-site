@@ -15,6 +15,7 @@ import {
   User,
 } from '../db/models.js'
 import { generateConfirmationCode } from '../lib/utils.js'
+import { getDialCodeForCountry, normalizePhoneNumber } from '../lib/phone.js'
 import { fulfillPaidOrder } from '../services/checkoutFulfillment.js'
 import { listOrdersForUser, lookupOrdersByEmail } from '../services/customerOrders.js'
 import { isGatewayPaymentConfirmed, markOrderPaymentCancelled, reconcileOrderPayment, verifyRazorpayPaymentCaptured } from '../services/paymentFees.js'
@@ -101,7 +102,8 @@ export async function checkoutRoutes(app) {
 
     const schema = z.object({
       customerEmail: z.string().email(),
-      customerPhone: z.string().optional(),
+      customerPhone: z.string().trim().min(7, 'Phone number is required'),
+      customerWhatsapp: z.string().trim().min(7, 'WhatsApp number is required'),
       billing: billingSchema,
       paymentMethod: z.string().default('razorpay'),
       affiliateCode: z.string().optional(),
@@ -145,6 +147,16 @@ export async function checkoutRoutes(app) {
     const payable = total - walletApplied
     const confirmationCode = generateConfirmationCode()
     const paymentMethods = COUNTRY_PAYMENTS[cart.countryCode] ?? COUNTRY_PAYMENTS.default
+    const phoneDialCode = getDialCodeForCountry(payload.billing.countryCode)
+    const customerPhone = normalizePhoneNumber(payload.billing.countryCode, payload.customerPhone)
+    const customerWhatsapp = normalizePhoneNumber(payload.billing.countryCode, payload.customerWhatsapp)
+
+    if (!customerPhone) {
+      throw app.httpErrors.badRequest('Enter a valid phone number for your region')
+    }
+    if (!customerWhatsapp) {
+      throw app.httpErrors.badRequest('Enter a valid WhatsApp number for your region')
+    }
 
     if (!paymentMethods.includes(payload.paymentMethod) && payload.paymentMethod !== 'wallet') {
       throw app.httpErrors.badRequest('Payment method not available in your country')
@@ -176,7 +188,9 @@ export async function checkoutRoutes(app) {
       userId,
       sessionId,
       customerEmail: payload.customerEmail,
-      customerPhone: payload.customerPhone,
+      customerPhone,
+      customerWhatsapp,
+      phoneDialCode,
       countryCode: payload.billing.countryCode,
       currency: cart.currency,
       subtotal,
@@ -249,7 +263,7 @@ export async function checkoutRoutes(app) {
           productinfo,
           firstname: payload.billing.firstName,
           email: payload.customerEmail,
-          phone: payload.customerPhone ?? '',
+          phone: customerPhone,
           udf1: order._id.toString(),
           surl: callbackUrl,
           furl: callbackUrl,

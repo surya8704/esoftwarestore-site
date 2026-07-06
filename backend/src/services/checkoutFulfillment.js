@@ -73,7 +73,7 @@ export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId
     console.error('[fulfillment] email delivery failed:', err.message)
   }
   await sendOrderWhatsApp({
-    phone: order.customerPhone,
+    phone: order.customerWhatsapp || order.customerPhone,
     order: mapId(order),
     confirmationCode: order.confirmationCode,
     licenseKey: primaryKey,

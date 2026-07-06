@@ -197,6 +197,27 @@ export async function sendEmail({
     return { status: 'logged', error: message }
   }
 
+  if (config.resendSandbox && config.resendAccountEmail) {
+    const allowed = config.resendAccountEmail.trim().toLowerCase()
+    const recipient = String(to).trim().toLowerCase()
+    if (recipient !== allowed) {
+      const message = `Resend sandbox only allows sending to ${config.resendAccountEmail}. Verify esoftwarestore.com at https://resend.com/domains and set RESEND_SANDBOX=false on the server to email customers.`
+      await EmailLog.create({
+        toEmail: to,
+        subject,
+        template,
+        status: 'failed',
+        metadata: JSON.stringify({ ...metadata, error: message, sandbox: true }),
+      })
+      if (required) {
+        const err = new Error(message)
+        err.code = 'EMAIL_SANDBOX_RECIPIENT'
+        throw err
+      }
+      return { status: 'failed', error: message }
+    }
+  }
+
   const payload = {
     from: config.emailFrom,
     to: [to],
@@ -223,7 +244,19 @@ export async function sendEmail({
 
   const data = await response.json().catch(() => ({}))
   const status = response.ok ? 'sent' : 'failed'
-  const errorMessage = data.message ?? data.error ?? (response.ok ? null : `Email provider error (${response.status})`)
+  let errorMessage = data.message ?? data.error ?? (response.ok ? null : `Email provider error (${response.status})`)
+
+  if (!response.ok && errorMessage) {
+    if (String(errorMessage).includes('domain is not verified')) {
+      errorMessage = `${errorMessage} Verify your domain at https://resend.com/domains and set EMAIL_FROM to an address on that domain. For local testing only, set RESEND_SANDBOX=true (sends from onboarding@resend.dev to your Resend account email).`
+    }
+    if (String(errorMessage).includes('only send testing emails to your own email')) {
+      const hint = config.resendAccountEmail
+        ? ` Sandbox mode only allows sending to ${config.resendAccountEmail}.`
+        : ' Set RESEND_ACCOUNT_EMAIL to your Resend login email, or verify your domain to email customers.'
+      errorMessage = `${errorMessage}${hint}`
+    }
+  }
 
   await EmailLog.create({
     toEmail: to,

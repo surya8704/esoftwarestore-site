@@ -2,6 +2,30 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
+function normalizeEmailFrom(raw) {
+  const trimmed = String(raw ?? '').trim()
+  if (!trimmed) return 'eSoftware Store <info@esoftwarestore.com>'
+
+  const bracketed = trimmed.match(/^(.+?)\s*<([^>]+@[^>]+)>$/)
+  if (bracketed) return `${bracketed[1].trim()} <${bracketed[2].trim()}>`
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return `eSoftware Store <${trimmed}>`
+  }
+
+  const loose = trimmed.match(/^(.+?)\s+([\w.%+-]+@[\w.-]+\.[a-z]{2,})$/i)
+  if (loose) return `${loose[1].trim()} <${loose[2].trim()}>`
+
+  return trimmed
+}
+
+function resolveEmailFrom() {
+  if (process.env.RESEND_SANDBOX === '1' || process.env.RESEND_SANDBOX === 'true') {
+    return 'eSoftware Store <onboarding@resend.dev>'
+  }
+  return normalizeEmailFrom(process.env.EMAIL_FROM ?? 'eSoftware Store <info@esoftwarestore.com>')
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
@@ -21,7 +45,9 @@ export const config = {
     process.env.RENDER_EXTERNAL_URL ??
     `http://localhost:${process.env.PORT ?? 4000}`,
   resendApiKey: process.env.RESEND_API_KEY ?? '',
-  emailFrom: process.env.EMAIL_FROM ?? 'eSoftware Store <info@esoftwarestore.com>',
+  resendSandbox: process.env.RESEND_SANDBOX === '1' || process.env.RESEND_SANDBOX === 'true',
+  emailFrom: resolveEmailFrom(),
+  resendAccountEmail: process.env.RESEND_ACCOUNT_EMAIL ?? '',
   whatsappToken: process.env.WHATSAPP_TOKEN ?? '',
   whatsappPhoneId: process.env.WHATSAPP_PHONE_ID ?? '',
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',

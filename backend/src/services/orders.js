@@ -1,4 +1,5 @@
 import { mapId } from '../db/client.js'
+import { buildContactSummary } from '../lib/phone.js'
 import { Order, OrderItem, OrderNote, Product, User } from '../db/models.js'
 import { isGatewayPaymentConfirmed, resolveOrderPaymentBreakdown } from './paymentFees.js'
 import { canProcessOrderRefund, getRefundableAmount, roundMoney } from './refunds.js'
@@ -211,6 +212,7 @@ export async function loadAdminOrderDetail(orderId) {
     }),
     notes: notes.map(mapId),
     customerStats,
+    contact: buildContactSummary(order),
     billingName: [order.billing?.firstName, order.billing?.lastName].filter(Boolean).join(' ') || null,
   }
 }

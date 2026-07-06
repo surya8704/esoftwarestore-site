@@ -238,6 +238,16 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
                             <p className="text-xs uppercase tracking-wide text-slate-500">Gateway</p>
                             <p className="mt-1 font-semibold capitalize">{payment.feeProvider ?? o.paymentMethod ?? '—'}</p>
                           </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Phone</p>
+                            <p className="mt-1 font-semibold">{o.contact?.phoneDisplay ?? o.customerPhone ?? '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">WhatsApp</p>
+                            <p className="mt-1 font-semibold text-emerald-700">
+                              {o.contact?.whatsappDisplay ?? o.customerWhatsapp ?? o.customerPhone ?? '—'}
+                            </p>
+                          </div>
                         </div>
                         <OrderDetailPanel
                           embedded

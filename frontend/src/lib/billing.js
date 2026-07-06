@@ -52,6 +52,8 @@ export function emptyBilling(countryCode = 'IN') {
     state: '',
     postalCode: '',
     phone: '',
+    whatsapp: '',
+    whatsappSameAsPhone: true,
     email: '',
     orderNotes: '',
     createAccount: false,

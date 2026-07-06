@@ -13,6 +13,8 @@ import {
   Send,
   Trash2,
   User,
+  Phone,
+  MessageCircle,
   Video,
 } from 'lucide-react'
 import { dashboardApi } from '../api'
@@ -56,6 +58,11 @@ function statusBadge(status) {
     on_hold: 'bg-orange-100 text-orange-700',
   }
   return map[status] ?? 'bg-slate-100 text-slate-700'
+}
+
+function whatsappUrl(number) {
+  const digits = String(number ?? '').replace(/\D/g, '')
+  return digits ? `https://wa.me/${digits}` : null
 }
 
 function paymentLabel(order) {
@@ -299,7 +306,7 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
       setStatus(
         data.email?.status === 'sent'
           ? `Product key emailed to ${order.customerEmail}${markCompleted ? ' — order completed' : ''}`
-          : 'Email could not be sent — configure RESEND_API_KEY on the server',
+          : `Email could not be sent: ${data.email?.error ?? 'Unknown error'}`,
       )
       onUpdated?.()
       await load()
@@ -390,6 +397,7 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
 
   const stats = order.customerStats ?? {}
   const payment = order.payment ?? {}
+  const contact = order.contact ?? {}
   const maxRefundable = payment.refundableAmount ?? payment.amountPaid ?? order.total
   const totalRefunded = payment.totalRefunded ?? order.refundAmount ?? 0
   const parsedRefundAmount = Number(refundAmountInput)
@@ -671,6 +679,42 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
             <h3 className="flex items-center gap-2 font-bold"><User size={16} /> Customer</h3>
             <p className="mt-2 text-sm font-semibold">{order.customerEmail}</p>
             <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Country</dt>
+                <dd className="text-right font-medium">
+                  {contact.countryLabel ?? order.countryCode ?? '—'}
+                  {contact.countryCode || order.countryCode ? (
+                    <span className="ml-1 text-xs text-slate-400">({contact.countryCode ?? order.countryCode})</span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="flex items-center gap-1 text-slate-500"><Phone size={12} /> Phone</dt>
+                <dd className="text-right font-medium">{contact.phoneDisplay ?? order.customerPhone ?? '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="flex items-center gap-1 text-slate-500"><MessageCircle size={12} /> WhatsApp</dt>
+                <dd className="text-right">
+                  {contact.whatsappDisplay ?? order.customerWhatsapp ?? order.customerPhone ? (
+                    <a
+                      href={whatsappUrl(contact.whatsapp ?? order.customerWhatsapp ?? order.customerPhone)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-emerald-700 hover:underline"
+                    >
+                      {contact.whatsappDisplay ?? order.customerWhatsapp ?? order.customerPhone}
+                    </a>
+                  ) : (
+                    '—'
+                  )}
+                </dd>
+              </div>
+              {contact.dialCode ? (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Dial code</dt>
+                  <dd>{contact.dialCode}</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between"><dt className="text-slate-500">Orders</dt><dd>{stats.totalOrders ?? 0}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Paid</dt><dd>{stats.paidOrders ?? 0}</dd></div>
               {(stats.currencyStats ?? []).length ? (

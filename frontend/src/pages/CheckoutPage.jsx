@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, formatPrice, trackPage } from '../lib/api'
 import { CHECKOUT_COUNTRIES, emptyBilling, INDIAN_STATES } from '../lib/billing'
+import { getDialCodeForCountry, isValidLocalPhone } from '../lib/phone'
 import { submitPayuForm } from '../lib/payu'
 import { loadRazorpayCheckout, openRazorpayCheckout } from '../lib/razorpay'
 import { useApp } from '../context/AppContext'
@@ -39,6 +40,7 @@ export default function CheckoutPage() {
 
   const showPayu = currency === 'INR' || billing.countryCode === 'IN'
   const availablePaymentMethods = PAYMENT_METHODS.filter((method) => !method.inrOnly || showPayu)
+  const dialCode = getDialCodeForCountry(billing.countryCode)
 
   useEffect(() => {
     const payuStatus = searchParams.get('payu')
@@ -112,6 +114,15 @@ export default function CheckoutPage() {
         return
       }
     }
+    if (!isValidLocalPhone(billing.phone)) {
+      setError('Enter a valid phone number (at least 7 digits).')
+      return
+    }
+    const whatsappNumber = billing.whatsappSameAsPhone ? billing.phone : billing.whatsapp
+    if (!isValidLocalPhone(whatsappNumber)) {
+      setError('Enter a valid WhatsApp number (at least 7 digits).')
+      return
+    }
 
     setLoading(true)
     setError('')
@@ -135,7 +146,8 @@ export default function CheckoutPage() {
         method: 'POST',
         body: JSON.stringify({
           customerEmail: billing.email,
-          customerPhone: billing.phone || undefined,
+          customerPhone: billing.phone.trim(),
+          customerWhatsapp: whatsappNumber.trim(),
           billing: {
             firstName: billing.firstName,
             lastName: billing.lastName,
@@ -176,7 +188,7 @@ export default function CheckoutPage() {
         prefill: {
           name: fullName,
           email: billing.email,
-          contact: billing.phone,
+          contact: `${dialCode.replace('+', '')}${billing.phone.replace(/\D/g, '')}`,
         },
         theme: { color: '#f97316' },
       })
@@ -345,14 +357,65 @@ export default function CheckoutPage() {
               </Field>
             </div>
 
-            <Field label="Phone (optional)">
-              <input
-                type="tel"
-                value={billing.phone}
-                onChange={(e) => setField('phone', e.target.value)}
-                className="store-input"
-                autoComplete="tel"
-              />
+            <Field label="Phone" required>
+              <div className="flex overflow-hidden rounded-xl border border-store bg-store-surface focus-within:ring-2 focus-within:ring-[#f97316]/30">
+                <span className="flex shrink-0 items-center border-r border-store bg-store-subtle px-3 text-sm font-semibold text-store-heading">
+                  {dialCode}
+                </span>
+                <input
+                  type="tel"
+                  required
+                  value={billing.phone}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setBilling((prev) => ({
+                      ...prev,
+                      phone: value,
+                      whatsapp: prev.whatsappSameAsPhone ? value : prev.whatsapp,
+                    }))
+                  }}
+                  placeholder="Mobile number"
+                  className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 text-sm outline-none"
+                  autoComplete="tel-national"
+                />
+              </div>
+              <p className="mt-1 text-xs text-store-muted">Country code is set from your billing country ({billing.countryCode}).</p>
+            </Field>
+
+            <Field label="WhatsApp number" required>
+              <label className="mb-2 flex items-center gap-2 text-sm text-store-body">
+                <input
+                  type="checkbox"
+                  checked={billing.whatsappSameAsPhone}
+                  onChange={(e) => setBilling((prev) => ({
+                    ...prev,
+                    whatsappSameAsPhone: e.target.checked,
+                    whatsapp: e.target.checked ? prev.phone : prev.whatsapp,
+                  }))}
+                  className="h-4 w-4 rounded border-store text-[#f97316] focus:ring-[#f97316]"
+                />
+                Same as phone number
+              </label>
+              {!billing.whatsappSameAsPhone ? (
+                <div className="flex overflow-hidden rounded-xl border border-store bg-store-surface focus-within:ring-2 focus-within:ring-[#f97316]/30">
+                  <span className="flex shrink-0 items-center border-r border-store bg-store-subtle px-3 text-sm font-semibold text-store-heading">
+                    {dialCode}
+                  </span>
+                  <input
+                    type="tel"
+                    required
+                    value={billing.whatsapp}
+                    onChange={(e) => setField('whatsapp', e.target.value)}
+                    placeholder="WhatsApp number"
+                    className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 text-sm outline-none"
+                    autoComplete="tel-national"
+                  />
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed border-store bg-store-subtle px-3 py-2.5 text-sm text-store-muted">
+                  {billing.phone ? `${dialCode} ${billing.phone}` : 'Uses your phone number above'}
+                </p>
+              )}
             </Field>
 
             <Field label="Email address" required>

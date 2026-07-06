@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, Mail, RefreshCw, Search } from 'lucide-react'
+import { ChevronDown, ChevronUp, Mail, MessageCircle, Phone, RefreshCw, Search } from 'lucide-react'
 import { dashboardApi, formatMoney } from '../api'
 import OrderDetailPanel from '../components/OrderDetailPanel'
 
@@ -83,6 +83,7 @@ function CustomerExpandedPanel({ email, formatMoney: fmt, expandedOrderId, onTog
   if (!data) return <p className="text-sm text-slate-500">Customer not found.</p>
 
   const { stats, orders, user } = data
+  const contact = data.contact ?? orders[0]?.contact ?? null
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/40 sm:p-6">
@@ -106,6 +107,30 @@ function CustomerExpandedPanel({ email, formatMoney: fmt, expandedOrderId, onTog
           <RefreshCw size={12} /> Refresh
         </button>
       </div>
+
+      {contact ? (
+        <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-white/10 dark:bg-white/5 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Country</p>
+            <p className="mt-1 font-semibold">
+              {contact.countryLabel ?? contact.countryCode ?? '—'}
+              {contact.countryCode ? <span className="ml-1 text-xs text-slate-400">({contact.countryCode})</span> : null}
+            </p>
+          </div>
+          <div>
+            <p className="flex items-center gap-1 text-xs uppercase tracking-wide text-slate-500"><Phone size={12} /> Phone</p>
+            <p className="mt-1 font-semibold">{contact.phoneDisplay ?? contact.phone ?? '—'}</p>
+          </div>
+          <div>
+            <p className="flex items-center gap-1 text-xs uppercase tracking-wide text-slate-500"><MessageCircle size={12} /> WhatsApp</p>
+            <p className="mt-1 font-semibold text-emerald-700">{contact.whatsappDisplay ?? contact.whatsapp ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Dial code</p>
+            <p className="mt-1 font-semibold">{contact.dialCode ?? '—'}</p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 p-3 dark:border-white/10">

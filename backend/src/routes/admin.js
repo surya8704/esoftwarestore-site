@@ -21,6 +21,7 @@ import {
 } from '../services/paymentFees.js'
 import { canProcessOrderRefund, getRefundableAmount, processOrderRefund, roundMoney } from '../services/refunds.js'
 import { generateConfirmationCode } from '../lib/utils.js'
+import { buildContactSummary } from '../lib/phone.js'
 import { hashPassword } from '../db/seed.js'
 import { normalizeProduct, productSchema, vendorStats } from './vendor.js'
 
@@ -38,6 +39,7 @@ async function mapOrderListRow(order) {
     quantity: items.reduce((sum, item) => sum + item.quantity, 0),
     items: items.map(mapId),
     payment,
+    contact: buildContactSummary(order),
   }
 }
 
@@ -420,6 +422,7 @@ export async function adminRoutes(app) {
       orderStatus: z.enum(ORDER_STATUSES).optional(),
       customerEmail: z.string().email().optional(),
       customerPhone: z.string().max(40).optional(),
+      customerWhatsapp: z.string().max(40).optional(),
     })
     const payload = schema.parse(request.body)
     const order = await Order.findById(request.params.id)
@@ -429,6 +432,7 @@ export async function adminRoutes(app) {
     if (payload.orderStatus) order.orderStatus = payload.orderStatus
     if (payload.customerEmail) order.customerEmail = payload.customerEmail
     if (payload.customerPhone !== undefined) order.customerPhone = payload.customerPhone
+    if (payload.customerWhatsapp !== undefined) order.customerWhatsapp = payload.customerWhatsapp
     await order.save()
 
     if (payload.orderStatus && payload.orderStatus !== previousStatus) {
@@ -726,6 +730,7 @@ export async function adminRoutes(app) {
         ? { id: user._id.toString(), name: user.name, email: user.email, role: user.role, createdAt: user.createdAt }
         : null,
       stats,
+      contact: orderRows[0]?.contact ?? null,
       orders: orderRows,
     }
   })

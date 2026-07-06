@@ -131,6 +131,8 @@ const orderSchema = new mongoose.Schema({
   sessionId: { type: String, maxlength: 64 },
   customerEmail: { type: String, required: true, maxlength: 180 },
   customerPhone: { type: String, maxlength: 40 },
+  customerWhatsapp: { type: String, maxlength: 40 },
+  phoneDialCode: { type: String, maxlength: 6 },
   countryCode: { type: String, maxlength: 2, default: 'IN' },
   currency: { type: String, maxlength: 3, default: 'INR' },
   subtotal: { type: Number, required: true },
