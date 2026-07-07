@@ -96,13 +96,24 @@ export async function seedDatabase() {
 
   await SupportVideo.deleteMany({})
 
-  const adminEmail = 'admin@esoftware.store'
+  const adminEmail = 'info@esoftwarestore.com'
+  const adminPassword = 'Code11login..'
+  const legacyAdminEmail = 'admin@esoftware.store'
+
+  const legacyAdmin = await User.findOne({ email: legacyAdminEmail })
+  if (legacyAdmin) {
+    legacyAdmin.email = adminEmail
+    legacyAdmin.passwordHash = hashPassword(adminPassword)
+    legacyAdmin.role = 'admin'
+    await legacyAdmin.save()
+  }
+
   let admin = await User.findOne({ email: adminEmail })
   if (!admin) {
     admin = await User.create({
       name: 'Admin',
       email: adminEmail,
-      passwordHash: hashPassword('Admin@123'),
+      passwordHash: hashPassword(adminPassword),
       role: 'admin',
       affiliateCode: 'ADMIN',
     })

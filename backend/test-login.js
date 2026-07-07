@@ -2,8 +2,8 @@
 import http from 'http'
 
 const data = JSON.stringify({
-  email: 'admin@esoftware.store',
-  password: 'Admin@123'
+  email: 'info@esoftwarestore.com',
+  password: 'Code11login..'
 })
 
 const options = {

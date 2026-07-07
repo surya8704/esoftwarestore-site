@@ -49,7 +49,7 @@ export default function AdminPanel() {
   const [token, setToken] = useState(() => localStorage.getItem('adminToken') ?? '')
   const [user, setUser] = useState(null)
   const [products, setProducts] = useState([])
-  const [authForm, setAuthForm] = useState({ email: 'admin@esoftware.store', password: 'Admin@123' })
+  const [authForm, setAuthForm] = useState({ email: 'info@esoftwarestore.com', password: '' })
   const [productForm, setProductForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -240,7 +240,7 @@ export default function AdminPanel() {
                 Sign in as admin
               </button>
               <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-white/5 dark:text-slate-400">
-                Seeded admin credentials: `admin@esoftware.store` / `Admin@123`
+                Seeded admin email: `info@esoftwarestore.com`
               </p>
             </form>
           ) : (

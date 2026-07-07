@@ -61,7 +61,7 @@ npm run dev
 
 Open http://localhost:5173
 
-**Admin**: `admin@esoftware.store` / `Admin@123`
+**Admin**: `info@esoftwarestore.com`
 
 **Vendor**: `vendor@demo.store` / `Vendor@123`
 

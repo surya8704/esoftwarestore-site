@@ -46,7 +46,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState('overview')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
-  const [authForm, setAuthForm] = useState({ email: 'admin@esoftware.store', password: 'Admin@123' })
+  const [authForm, setAuthForm] = useState({ email: 'info@esoftwarestore.com', password: '' })
 
   const isAdmin = user?.role === 'admin'
   const isVendor = user?.role === 'vendor'
@@ -140,7 +140,7 @@ export default function AdminDashboard() {
           </form>
 
           <div className="mt-6 space-y-2 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500 dark:bg-white/5">
-            <p><strong>Admin:</strong> admin@esoftware.store / Admin@123</p>
+            <p><strong>Admin:</strong> info@esoftwarestore.com</p>
             <p><strong>Vendor:</strong> vendor@demo.store / Vendor@123</p>
           </div>
           {status ? <p className="mt-4 text-sm text-slate-500">{status}</p> : null}

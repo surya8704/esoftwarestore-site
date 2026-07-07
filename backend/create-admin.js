@@ -1,8 +1,10 @@
-
-import crypto from 'crypto'
-import { User } from './src/db/models.js'
 import mongoose from 'mongoose'
+import { User } from './src/db/models.js'
+import { hashPassword } from './src/db/seed.js'
 import { config } from './src/config.js'
+
+const adminEmail = 'info@esoftwarestore.com'
+const adminPassword = 'Code11login..'
 
 async function createAdmin() {
   try {
@@ -11,29 +13,32 @@ async function createAdmin() {
         version: '1',
         strict: true,
         deprecationErrors: true,
-      }
+      },
     })
     console.log('Connected to MongoDB')
 
-    const password = 'Admin@123'
-    const passwordHash = crypto.pbkdf2Sync(password, 'salt', 100000, 64, 'sha512').toString('hex')
+    const existing = await User.findOne({ email: adminEmail })
+    if (existing) {
+      existing.passwordHash = hashPassword(adminPassword)
+      existing.role = 'admin'
+      await existing.save()
+      console.log('Admin user updated successfully!')
+    } else {
+      await User.create({
+        name: 'Admin',
+        email: adminEmail,
+        passwordHash: hashPassword(adminPassword),
+        role: 'admin',
+        countryCode: 'IN',
+        locale: 'en',
+        walletBalance: 0,
+        affiliateCode: 'ADMIN',
+        socialProvider: null,
+      })
+      console.log('Admin user created successfully!')
+    }
 
-    const admin = new User({
-      name: 'Admin',
-      email: 'admin@esoftware.store',
-      passwordHash,
-      role: 'admin',
-      countryCode: 'IN',
-      locale: 'en',
-      walletBalance: 0,
-      affiliateCode: 'ADMIN123',
-      socialProvider: null,
-    })
-
-    await admin.save()
-    console.log('Admin user created successfully!')
-    console.log('Email: admin@esoftware.store')
-    console.log('Password: Admin@123')
+    console.log(`Email: ${adminEmail}`)
     process.exit(0)
   } catch (err) {
     console.error('Error creating admin:', err)
