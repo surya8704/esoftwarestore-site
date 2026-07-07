@@ -46,7 +46,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState('overview')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
-  const [authForm, setAuthForm] = useState({ email: 'info@esoftwarestore.com', password: '' })
+  const [authForm, setAuthForm] = useState({ email: '', password: '' })
 
   const isAdmin = user?.role === 'admin'
   const isVendor = user?.role === 'vendor'
