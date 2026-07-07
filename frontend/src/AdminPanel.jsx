@@ -49,7 +49,7 @@ export default function AdminPanel() {
   const [token, setToken] = useState(() => localStorage.getItem('adminToken') ?? '')
   const [user, setUser] = useState(null)
   const [products, setProducts] = useState([])
-  const [authForm, setAuthForm] = useState({ email: '', password: '' })
+  const [authForm, setAuthForm] = useState({ email: 'info@esoftwarestore.com', password: '' })
   const [productForm, setProductForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(false)
