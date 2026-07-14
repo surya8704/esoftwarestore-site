@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Eye, ShoppingCart, Star } from 'lucide-react'
-import { formatPrice, discountPercent } from '../lib/api'
+import { formatPrice, discountPercent, soldRecentlyCount } from '../lib/api'
 
 function StarRating({ rating = 0 }) {
   const stars = Math.round(rating)
@@ -24,6 +24,7 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
   const price = product.displayPrice ?? product.price
   const discount = discountPercent(price, product.originalPrice)
   const hasOriginal = product.originalPrice && product.originalPrice > price
+  const soldRecently = soldRecentlyCount(product)
 
   return (
     <article className="product-card group relative flex h-full flex-col">
@@ -55,6 +56,10 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
         </Link>
 
         <StarRating rating={product.rating} />
+
+        <p className="mt-1.5 text-[11px] font-semibold text-[#ea580c] sm:text-xs">
+          {soldRecently} sold recently
+        </p>
 
         {!compact ? (
           <p className="mt-2 hidden line-clamp-2 text-xs leading-relaxed text-store-muted sm:block">{product.description}</p>

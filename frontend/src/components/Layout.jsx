@@ -209,7 +209,6 @@ export default function Layout({ children }) {
               <Link to="/about" className={navLinkClass(location.pathname === '/about')}>{t('about')}</Link>
               <Link to="/guides" className={navLinkClass(location.pathname.startsWith('/guides'))}>Guides</Link>
               <Link to="/support" className={navLinkClass(location.pathname === '/support')}>{t('support')}</Link>
-              <Link to="/checkout" className={navLinkClass(location.pathname === '/checkout')}>{t('checkout')}</Link>
             </div>
             {categories.length > 0 ? (
               <>
@@ -266,13 +265,6 @@ export default function Layout({ children }) {
                 onClick={closeMenus}
               >
                 About Us
-              </Link>
-              <Link
-                to="/checkout"
-                className={`rounded-lg px-3 py-2.5 ${navLinkClass(location.pathname === '/checkout')}`}
-                onClick={closeMenus}
-              >
-                Checkout
               </Link>
               {user ? (
                 <Link
@@ -373,7 +365,6 @@ export default function Layout({ children }) {
             <p className="font-semibold text-white/90">Account</p>
             <ul className="mt-4 space-y-2.5 text-sm text-white/60">
               <li><Link to="/account" className="hover:text-[#f97316] transition-colors">My account</Link></li>
-              <li><Link to="/checkout" className="hover:text-[#f97316] transition-colors">Checkout</Link></li>
             </ul>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Heart, ShoppingCart, ZoomIn } from 'lucide-react'
-import { api, formatPrice, trackPage, discountPercent } from '../lib/api'
+import { api, formatPrice, trackPage, discountPercent, soldRecentlyCount } from '../lib/api'
 import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_URL } from '../lib/contact'
 import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/products'
 import { useApp } from '../context/AppContext'
@@ -85,8 +85,8 @@ export default function ProductPage() {
     navigate('/checkout')
   }
 
-  const watchers = 20 + (product.id * 17) % 80
-  const soldRecently = 5 + (product.id * 3) % 15
+  const watchers = 20 + (soldRecentlyCount(product) * 17) % 80
+  const soldRecently = soldRecentlyCount(product)
 
   return (
     <>

@@ -101,3 +101,13 @@ export function discountPercent(price, originalPrice) {
   if (!originalPrice || originalPrice <= price) return 0
   return Math.round((1 - price / originalPrice) * 100)
 }
+
+/** Stable pseudo-random "sold recently" count per product (12–87). */
+export function soldRecentlyCount(product) {
+  const key = String(product?.id ?? product?.slug ?? product?.name ?? 'product')
+  let hash = 0
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0
+  }
+  return 12 + (hash % 76)
+}
