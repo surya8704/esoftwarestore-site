@@ -8,7 +8,6 @@ import { resolveStoreProductImage } from '../lib/productImages.js'
 
 const normalizeProduct = (product) => {
   const p = mapId(product)
-  const resolved = resolveStoreProductImage(p)
   return {
     ...p,
     rating: Number(p.rating) / 10,
@@ -17,7 +16,7 @@ const normalizeProduct = (product) => {
     stock: Number(p.stock),
     hidePrice: Boolean(p.hidePrice),
     hideCart: Boolean(p.hideCart),
-    imageUrl: resolved,
+    imageUrl: resolveStoreProductImage(p, config.apiPublicUrl),
   }
 }
 

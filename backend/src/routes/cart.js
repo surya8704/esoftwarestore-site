@@ -35,7 +35,7 @@ export async function cartRoutes(app) {
                 name: product.name,
                 slug: product.slug,
                 category: product.category,
-                imageUrl: resolveStoreProductImage(product),
+                imageUrl: resolveStoreProductImage(product, config.apiPublicUrl),
               }
             : null,
           unitPrice: pricing.unitPrice,
