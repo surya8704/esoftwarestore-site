@@ -81,3 +81,15 @@ export const emptyUserForm = {
   password: '',
   role: 'customer',
 }
+
+export const emptyCouponForm = {
+  code: '',
+  prefix: 'SAVE',
+  discountType: 'percent',
+  discountValue: 10,
+  minAmount: 0,
+  maxUses: '',
+  expiresAt: '',
+  active: true,
+  generateCount: 1,
+}

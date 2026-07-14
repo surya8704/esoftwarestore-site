@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { mapId } from '../db/client.js'
 import {
   ConfirmationCode,
+  Coupon,
   Order,
   OrderItem,
   Product,
@@ -26,6 +27,46 @@ import { hashPassword } from '../db/seed.js'
 import { normalizeProduct, productSchema, vendorStats } from './vendor.js'
 
 const ORDER_STATUSES = ['pending', 'processing', 'completed', 'on_hold', 'cancelled', 'refunded']
+
+function generateCouponCode(prefix = 'SAVE') {
+  const clean = String(prefix || 'SAVE').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'SAVE'
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let suffix = ''
+  for (let i = 0; i < 6; i += 1) {
+    suffix += alphabet[Math.floor(Math.random() * alphabet.length)]
+  }
+  return `${clean}${suffix}`
+}
+
+const couponBodySchema = z.object({
+  code: z.string().trim().min(3).max(40).optional(),
+  prefix: z.string().trim().max(8).optional(),
+  discountType: z.enum(['percent', 'fixed']).default('percent'),
+  discountValue: z.number().positive(),
+  minAmount: z.number().min(0).default(0),
+  maxUses: z.number().int().positive().nullable().optional(),
+  countryCodes: z.string().trim().max(120).optional().nullable(),
+  productIds: z.string().trim().max(500).optional().nullable(),
+  active: z.boolean().default(true),
+  expiresAt: z.union([z.string(), z.null()]).optional(),
+})
+
+function parseExpiresAt(value) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date
+}
+
+function mapCoupon(coupon) {
+  return {
+    ...mapId(coupon),
+    isExpired: Boolean(coupon.expiresAt && new Date(coupon.expiresAt) < new Date()),
+    remainingUses:
+      coupon.maxUses == null ? null : Math.max(0, Number(coupon.maxUses) - Number(coupon.usedCount ?? 0)),
+  }
+}
 
 async function mapOrderListRow(order) {
   const items = await OrderItem.find({ orderId: order._id })
@@ -733,6 +774,132 @@ export async function adminRoutes(app) {
       contact: orderRows[0]?.contact ?? null,
       orders: orderRows,
     }
+  })
+
+  app.get('/api/admin/coupons', { preHandler: [app.requireAdmin] }, async () => {
+    const coupons = await Coupon.find().sort({ createdAt: -1 }).limit(200)
+    return { coupons: coupons.map(mapCoupon) }
+  })
+
+  app.post('/api/admin/coupons', { preHandler: [app.requireAdmin] }, async (request) => {
+    const payload = couponBodySchema.parse(request.body)
+    if (payload.discountType === 'percent' && payload.discountValue > 100) {
+      throw app.httpErrors.badRequest('Percent discount cannot exceed 100')
+    }
+
+    let code = (payload.code || '').toUpperCase().replace(/\s+/g, '')
+    if (!code) {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const candidate = generateCouponCode(payload.prefix)
+        const exists = await Coupon.findOne({ code: candidate })
+        if (!exists) {
+          code = candidate
+          break
+        }
+      }
+    }
+    if (!code) throw app.httpErrors.badRequest('Could not generate a unique coupon code')
+
+    const existing = await Coupon.findOne({ code })
+    if (existing) throw app.httpErrors.conflict('Coupon code already exists')
+
+    const coupon = await Coupon.create({
+      code,
+      discountType: payload.discountType,
+      discountValue: payload.discountValue,
+      minAmount: payload.minAmount ?? 0,
+      maxUses: payload.maxUses ?? null,
+      countryCodes: payload.countryCodes || undefined,
+      productIds: payload.productIds || undefined,
+      active: payload.active ?? true,
+      expiresAt: parseExpiresAt(payload.expiresAt),
+      usedCount: 0,
+    })
+
+    return { coupon: mapCoupon(coupon) }
+  })
+
+  app.post('/api/admin/coupons/generate', { preHandler: [app.requireAdmin] }, async (request) => {
+    const schema = z.object({
+      prefix: z.string().trim().max(8).optional(),
+      count: z.number().int().min(1).max(20).default(1),
+      discountType: z.enum(['percent', 'fixed']).default('percent'),
+      discountValue: z.number().positive(),
+      minAmount: z.number().min(0).default(0),
+      maxUses: z.number().int().positive().nullable().optional(),
+      active: z.boolean().default(true),
+      expiresAt: z.union([z.string(), z.null()]).optional(),
+    })
+    const payload = schema.parse(request.body)
+    if (payload.discountType === 'percent' && payload.discountValue > 100) {
+      throw app.httpErrors.badRequest('Percent discount cannot exceed 100')
+    }
+
+    const created = []
+    for (let i = 0; i < payload.count; i += 1) {
+      let code = null
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const candidate = generateCouponCode(payload.prefix)
+        const exists = await Coupon.findOne({ code: candidate })
+        if (!exists) {
+          code = candidate
+          break
+        }
+      }
+      if (!code) continue
+      const coupon = await Coupon.create({
+        code,
+        discountType: payload.discountType,
+        discountValue: payload.discountValue,
+        minAmount: payload.minAmount ?? 0,
+        maxUses: payload.maxUses ?? null,
+        active: payload.active ?? true,
+        expiresAt: parseExpiresAt(payload.expiresAt),
+        usedCount: 0,
+      })
+      created.push(mapCoupon(coupon))
+    }
+
+    return { coupons: created, count: created.length }
+  })
+
+  app.patch('/api/admin/coupons/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const schema = z.object({
+      discountType: z.enum(['percent', 'fixed']).optional(),
+      discountValue: z.number().positive().optional(),
+      minAmount: z.number().min(0).optional(),
+      maxUses: z.number().int().positive().nullable().optional(),
+      countryCodes: z.string().trim().max(120).nullable().optional(),
+      productIds: z.string().trim().max(500).nullable().optional(),
+      active: z.boolean().optional(),
+      expiresAt: z.union([z.string(), z.null()]).optional(),
+    })
+    const payload = schema.parse(request.body)
+    const coupon = await Coupon.findById(request.params.id)
+    if (!coupon) return reply.code(404).send({ message: 'Coupon not found' })
+
+    if (payload.discountType !== undefined) coupon.discountType = payload.discountType
+    if (payload.discountValue !== undefined) {
+      if ((payload.discountType ?? coupon.discountType) === 'percent' && payload.discountValue > 100) {
+        throw app.httpErrors.badRequest('Percent discount cannot exceed 100')
+      }
+      coupon.discountValue = payload.discountValue
+    }
+    if (payload.minAmount !== undefined) coupon.minAmount = payload.minAmount
+    if (payload.maxUses !== undefined) coupon.maxUses = payload.maxUses
+    if (payload.countryCodes !== undefined) coupon.countryCodes = payload.countryCodes || undefined
+    if (payload.productIds !== undefined) coupon.productIds = payload.productIds || undefined
+    if (payload.active !== undefined) coupon.active = payload.active
+    if (payload.expiresAt !== undefined) coupon.expiresAt = parseExpiresAt(payload.expiresAt)
+
+    await coupon.save()
+    return { coupon: mapCoupon(coupon) }
+  })
+
+  app.delete('/api/admin/coupons/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const coupon = await Coupon.findByIdAndDelete(request.params.id)
+    if (!coupon) return reply.code(404).send({ message: 'Coupon not found' })
+    return { ok: true }
   })
 }
 

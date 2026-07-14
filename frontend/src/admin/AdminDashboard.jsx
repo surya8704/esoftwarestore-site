@@ -12,6 +12,7 @@ import {
   UserCircle,
   Users,
   Wallet,
+  TicketPercent,
 } from 'lucide-react'
 import { dashboardApi, emptyProductForm, emptyVendorForm, formatMoney } from './api'
 import OverviewTab from './tabs/OverviewTab'
@@ -21,6 +22,7 @@ import OrdersTab from './tabs/OrdersTab'
 import PayoutsTab from './tabs/PayoutsTab'
 import UsersTab from './tabs/UsersTab'
 import CustomersTab from './tabs/CustomersTab'
+import CouponsTab from './tabs/CouponsTab'
 import ThemeToggle from '../components/ThemeToggle'
 
 const ADMIN_TABS = [
@@ -29,6 +31,7 @@ const ADMIN_TABS = [
   { id: 'products', label: 'Products', icon: Package },
   { id: 'orders', label: 'Orders', icon: ShoppingBag },
   { id: 'customers', label: 'Customers', icon: UserCircle },
+  { id: 'coupons', label: 'Coupons', icon: TicketPercent },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'users', label: 'Users', icon: Users },
 ]
@@ -190,6 +193,7 @@ export default function AdminDashboard() {
           {tab === 'products' ? <ProductsTab isAdmin={isAdmin} emptyProductForm={emptyProductForm} formatMoney={formatMoney} /> : null}
           {tab === 'orders' ? <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
           {tab === 'customers' && isAdmin ? <CustomersTab formatMoney={formatMoney} /> : null}
+          {tab === 'coupons' && isAdmin ? <CouponsTab /> : null}
           {tab === 'payouts' ? <PayoutsTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
           {tab === 'users' && isAdmin ? <UsersTab currentUserId={user.id} /> : null}
         </div>
