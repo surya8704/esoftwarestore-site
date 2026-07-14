@@ -73,6 +73,8 @@ export const emptyProductForm = {
   name: '',
   slug: '',
   category: 'Windows',
+  productType: 'standard',
+  bundleItems: [],
   price: 1999,
   originalPrice: 4999,
   rating: 4.8,

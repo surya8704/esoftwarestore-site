@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ShoppingCart, Star, X } from 'lucide-react'
+import { Package, ShoppingCart, Star, X } from 'lucide-react'
 import { formatPrice, discountPercent } from '../lib/api'
 import { reviewCountForProduct } from '../lib/reviews'
 import ProductImage from './ProductImage'
@@ -12,6 +12,8 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
   const hasOriginal = product.originalPrice && product.originalPrice > price
   const stars = Math.round(product.rating ?? 0)
   const reviewCount = product.reviewCount ?? reviewCountForProduct(product)
+  const isBundle = product.isBundle || product.productType === 'bundle'
+  const bundleContents = product.bundleContents ?? []
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center p-0 sm:items-center sm:p-4">
@@ -23,6 +25,11 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
         <div className="grid md:grid-cols-2">
           <div className="relative aspect-square bg-store-hover">
             {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
+            {isBundle ? (
+              <span className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-[#7c3aed] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
+                <Package size={10} /> Bundle
+              </span>
+            ) : null}
             <ProductImage
               product={product}
               alt={product.name}
@@ -31,7 +38,9 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
             />
           </div>
           <div className="flex flex-col p-6 md:p-8">
-            <p className="text-xs font-bold uppercase tracking-wider text-store-muted">{product.category}</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-store-muted">
+              {isBundle ? 'Bundle deal' : product.category}
+            </p>
             <h2 className="mt-2 text-xl font-extrabold leading-tight text-store-heading md:text-2xl">{product.name}</h2>
 
             {product.rating ? (
@@ -49,6 +58,16 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
                 <p className="text-base text-store-muted line-through">{formatPrice(product.originalPrice, product.currency ?? currency)}</p>
               ) : null}
             </div>
+
+            {isBundle && bundleContents.length ? (
+              <ul className="mt-3 space-y-1 text-sm text-store-body">
+                {bundleContents.map((item) => (
+                  <li key={item.productId}>
+                    · {item.name}{item.quantity > 1 ? ` ×${item.quantity}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             <p className="mt-4 flex-1 text-sm leading-relaxed text-store-muted">{product.description}</p>
 

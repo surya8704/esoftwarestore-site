@@ -26,6 +26,7 @@ import {
   validateResponseHash,
 } from '../services/payu.js'
 import { resolveProductPrice, validateCoupon } from '../services/pricing.js'
+import { expandLineToOrderItems } from '../lib/bundles.js'
 
 function normalizePayuStatus(status) {
   const value = String(status ?? '').toLowerCase()
@@ -224,14 +225,24 @@ export async function checkoutRoutes(app) {
     })
 
     for (const item of lineItems) {
-      await OrderItem.create({
-        orderId: order._id,
-        productId: item.productId,
-        variantId: item.variantId,
-        productName: item.product.name,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-      })
+      let orderLines
+      try {
+        orderLines = await expandLineToOrderItems(item)
+      } catch (err) {
+        throw app.httpErrors.badRequest(err.message || 'Could not expand bundle for checkout')
+      }
+      for (const line of orderLines) {
+        await OrderItem.create({
+          orderId: order._id,
+          productId: line.productId,
+          variantId: line.variantId,
+          productName: line.productName,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          bundleProductId: line.bundleProductId,
+          bundleProductName: line.bundleProductName,
+        })
+      }
     }
 
     if (cart.couponCode) {

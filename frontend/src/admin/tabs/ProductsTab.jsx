@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Package, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { dashboardApi, uploadProductImage, uploadProductLicenseKeys } from '../api'
 import { defaultVendorPermissions } from '../vendorAccess'
 
@@ -18,6 +18,7 @@ export default function ProductsTab({
   const [keysUploadingId, setKeysUploadingId] = useState(null)
   const [keyOverview, setKeyOverview] = useState(null)
   const [status, setStatus] = useState('')
+  const [bundlePickId, setBundlePickId] = useState('')
   const fileInputRef = useRef(null)
   const keysInputRef = useRef(null)
   const keysProductIdRef = useRef(null)
@@ -27,6 +28,24 @@ export default function ProductsTab({
   const canCreateProducts = isAdmin || (vendorPermissions.canManageProducts && vendorPermissions.canEditPrices)
 
   const productsPath = isAdmin ? '/api/admin/products' : '/api/vendor/products'
+
+  const standardProducts = useMemo(
+    () =>
+      products.filter(
+        (p) =>
+          (p.productType ?? 'standard') !== 'bundle' &&
+          (!editingId || p.id !== editingId),
+      ),
+    [products, editingId],
+  )
+
+  const bundleSumList = useMemo(() => {
+    if ((form.productType ?? 'standard') !== 'bundle') return 0
+    return (form.bundleItems ?? []).reduce((sum, item) => {
+      const child = products.find((p) => p.id === item.productId)
+      return sum + (child ? Number(child.price) * (Number(item.quantity) || 1) : 0)
+    }, 0)
+  }, [form.productType, form.bundleItems, products])
 
   const load = async () => {
     const data = await dashboardApi(productsPath)
@@ -46,6 +65,7 @@ export default function ProductsTab({
   const reset = () => {
     setEditingId(null)
     setForm(emptyProductForm)
+    setBundlePickId('')
     setStatus('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -77,13 +97,56 @@ export default function ProductsTab({
     }
   }
 
+  const addBundleProduct = () => {
+    if (!bundlePickId) return
+    const exists = (form.bundleItems ?? []).some((item) => item.productId === bundlePickId)
+    if (exists) {
+      setStatus('That product is already in the bundle — raise its quantity instead')
+      return
+    }
+    setForm((prev) => ({
+      ...prev,
+      bundleItems: [...(prev.bundleItems ?? []), { productId: bundlePickId, quantity: 1 }],
+      licenseType: prev.productType === 'bundle' && !prev.licenseType ? 'Bundle deal' : prev.licenseType,
+    }))
+    setBundlePickId('')
+  }
+
+  const updateBundleQty = (productId, quantity) => {
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1))
+    setForm((prev) => ({
+      ...prev,
+      bundleItems: (prev.bundleItems ?? []).map((item) =>
+        item.productId === productId ? { ...item, quantity: qty } : item,
+      ),
+    }))
+  }
+
+  const removeBundleProduct = (productId) => {
+    setForm((prev) => ({
+      ...prev,
+      bundleItems: (prev.bundleItems ?? []).filter((item) => item.productId !== productId),
+    }))
+  }
+
   const submit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setStatus('')
     try {
+      if ((form.productType ?? 'standard') === 'bundle' && (form.bundleItems?.length ?? 0) < 2) {
+        throw new Error('Add at least 2 products to create a bundle deal')
+      }
       const body = {
         ...form,
+        productType: form.productType ?? 'standard',
+        bundleItems:
+          (form.productType ?? 'standard') === 'bundle'
+            ? (form.bundleItems ?? []).map((item) => ({
+                productId: item.productId,
+                quantity: Number(item.quantity) || 1,
+              }))
+            : [],
         price: Number(form.price),
         originalPrice: Number(form.originalPrice),
         rating: Number(form.rating),
@@ -115,6 +178,11 @@ export default function ProductsTab({
       name: product.name,
       slug: product.slug,
       category: product.category,
+      productType: product.productType ?? 'standard',
+      bundleItems: (product.bundleItems ?? []).map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity ?? 1,
+      })),
       price: product.price,
       originalPrice: product.originalPrice,
       rating: product.rating,
@@ -127,6 +195,7 @@ export default function ProductsTab({
       allowedCountries: product.allowedCountries ?? [],
       blockedCountries: product.blockedCountries ?? [],
     })
+    setBundlePickId('')
     setStatus('')
   }
 
@@ -207,12 +276,16 @@ export default function ProductsTab({
     }
   }
 
+  const isBundleForm = (form.productType ?? 'standard') === 'bundle'
+
   return (
     <div>
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">{isAdmin ? 'All products' : 'My products'}</h2>
-          <p className="text-sm text-slate-500">{products.length} listings · country restrictions supported</p>
+          <p className="text-sm text-slate-500">
+            {products.length} listings · create standard products or multi-product bundle deals
+          </p>
         </div>
         <button
           type="button"
@@ -232,7 +305,7 @@ export default function ProductsTab({
                 <KeyRound size={16} /> Automatic key delivery
               </p>
               <p className="mt-1 text-sm text-sky-800/80 dark:text-sky-200/80">
-                Upload an Excel/CSV of unique product keys per product. Paid orders pull the next unused key, email the customer, and mark the order completed. If the pool is empty, the order stays <strong>pending</strong> for manual delivery.
+                Upload keys on individual products. When a <strong>bundle</strong> sells, keys are taken from each included product’s pool and emailed together.
               </p>
               {keyOverview ? (
                 <p className="mt-2 text-xs text-sky-700 dark:text-sky-300">
@@ -266,10 +339,32 @@ export default function ProductsTab({
       ) : null}
 
       <form onSubmit={submit} className="mt-6 grid gap-3 sm:grid-cols-2">
+        <label>
+          <span className="mb-1 block text-xs font-medium">Listing type</span>
+          <select
+            value={form.productType ?? 'standard'}
+            onChange={(e) => {
+              const productType = e.target.value
+              setForm((prev) => ({
+                ...prev,
+                productType,
+                licenseType: productType === 'bundle' && (!prev.licenseType || prev.licenseType === 'Lifetime')
+                  ? 'Bundle deal'
+                  : prev.licenseType,
+                bundleItems: productType === 'bundle' ? prev.bundleItems ?? [] : [],
+              }))
+            }}
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+          >
+            <option value="standard">Standard product</option>
+            <option value="bundle">Bundle deal (2+ products)</option>
+          </select>
+        </label>
+
         {[
           ['name', 'Name'], ['slug', 'Slug'], ['category', 'Category'],
-          ...(canEditPrices ? [['price', 'Price'], ['originalPrice', 'Original price']] : []),
-          ['stock', 'Stock'],
+          ...(canEditPrices ? [['price', 'Bundle / sale price'], ['originalPrice', 'Original price (show as strike-through)']] : []),
+          ['stock', 'Stock (display)'],
           ['licenseType', 'License type'], ['rating', 'Rating'],
         ].map(([key, label]) => (
           <label key={key}>
@@ -277,6 +372,89 @@ export default function ProductsTab({
             <input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
           </label>
         ))}
+
+        {isBundleForm ? (
+          <div className="sm:col-span-2 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/30 dark:bg-violet-500/10">
+            <p className="inline-flex items-center gap-2 text-sm font-semibold text-violet-900 dark:text-violet-100">
+              <Package size={16} /> Bundle products
+            </p>
+            <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/70">
+              Pick at least two standard products. Buyers pay the bundle price; license keys still come from each product’s key pool.
+            </p>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <select
+                value={bundlePickId}
+                onChange={(e) => setBundlePickId(e.target.value)}
+                className="flex-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm dark:border-violet-500/30 dark:bg-white/5"
+              >
+                <option value="">Select a product to include…</option>
+                {standardProducts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {formatMoney(p.price)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={addBundleProduct}
+                disabled={!bundlePickId}
+                className="inline-flex items-center justify-center gap-1 rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <Plus size={14} /> Add
+              </button>
+            </div>
+
+            <ul className="mt-3 space-y-2">
+              {(form.bundleItems ?? []).map((item) => {
+                const child = products.find((p) => p.id === item.productId)
+                return (
+                  <li
+                    key={item.productId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200/80 bg-white px-3 py-2 text-sm dark:border-violet-500/20 dark:bg-white/5"
+                  >
+                    <span className="font-medium">{child?.name ?? item.productId}</span>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1 text-xs text-slate-500">
+                        Qty
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) => updateBundleQty(item.productId, e.target.value)}
+                          className="w-16 rounded-lg border border-slate-200 px-2 py-1 dark:border-white/10 dark:bg-transparent"
+                        />
+                      </label>
+                      {child ? (
+                        <span className="text-xs text-slate-500">{formatMoney(child.price * (item.quantity || 1))}</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => removeBundleProduct(item.productId)}
+                        className="rounded-full p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                        aria-label="Remove from bundle"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+
+            {(form.bundleItems?.length ?? 0) > 0 ? (
+              <p className="mt-3 text-xs text-violet-900 dark:text-violet-100">
+                Components list price: <strong>{formatMoney(bundleSumList)}</strong>
+                {canEditPrices && Number(form.price) > 0 && bundleSumList > Number(form.price) ? (
+                  <> · Bundle saves <strong>{formatMoney(bundleSumList - Number(form.price))}</strong></>
+                ) : null}
+                {(form.bundleItems?.length ?? 0) < 2 ? (
+                  <span className="text-amber-700 dark:text-amber-300"> · add at least one more product</span>
+                ) : null}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="sm:col-span-2">
           <span className="mb-2 block text-xs font-medium">Product image</span>
@@ -351,55 +529,71 @@ export default function ProductsTab({
       </form>
 
       <div className="mt-8 space-y-3">
-        {products.map((p) => (
-          <div key={p.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
-                {p.imageUrl ? (
-                  <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-slate-400">
-                    <ImagePlus size={18} />
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="font-semibold">{p.name}</p>
-                <p className="text-sm text-slate-500">
-                  {p.category} • {formatMoney(p.price)} • Stock {p.stock}
-                  {p.vendorName ? ` • ${p.vendorName}` : ''}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
-                {isAdmin && p.licensePool ? (
-                  <p className={`mt-1 text-xs font-semibold ${p.licensePool.available > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    Keys: {p.licensePool.available} available · {p.licensePool.assigned} used
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {isAdmin ? (
-                <button
-                  type="button"
-                  onClick={() => openKeysPicker(p.id)}
-                  disabled={keysUploadingId === p.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300"
-                >
-                  {keysUploadingId === p.id ? (
-                    <LoaderCircle className="animate-spin" size={14} />
+        {products.map((p) => {
+          const bundle = (p.productType ?? 'standard') === 'bundle'
+          return (
+            <div key={p.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
+                  {p.imageUrl ? (
+                    <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
                   ) : (
-                    <FileSpreadsheet size={14} />
+                    <div className="flex h-full w-full items-center justify-center text-slate-400">
+                      <ImagePlus size={18} />
+                    </div>
                   )}
-                  Upload keys
+                </div>
+                <div>
+                  <p className="font-semibold">
+                    {p.name}
+                    {bundle ? (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/20 dark:text-violet-200">
+                        <Package size={10} /> Bundle
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    {p.category} • {formatMoney(p.price)} • Stock {p.stock}
+                    {p.vendorName ? ` • ${p.vendorName}` : ''}
+                    {bundle ? ` • ${(p.bundleItems?.length ?? 0)} products` : ''}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
+                  {isAdmin && !bundle && p.licensePool ? (
+                    <p className={`mt-1 text-xs font-semibold ${p.licensePool.available > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      Keys: {p.licensePool.available} available · {p.licensePool.assigned} used
+                    </p>
+                  ) : null}
+                  {bundle ? (
+                    <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
+                      Keys delivered from each included product’s pool
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {isAdmin && !bundle ? (
+                  <button
+                    type="button"
+                    onClick={() => openKeysPicker(p.id)}
+                    disabled={keysUploadingId === p.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300"
+                  >
+                    {keysUploadingId === p.id ? (
+                      <LoaderCircle className="animate-spin" size={14} />
+                    ) : (
+                      <FileSpreadsheet size={14} />
+                    )}
+                    Upload keys
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => edit(p)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10">Edit</button>
+                <button type="button" onClick={() => remove(p.id)} className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white">
+                  <Trash2 size={14} className="inline" />
                 </button>
-              ) : null}
-              <button type="button" onClick={() => edit(p)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10">Edit</button>
-              <button type="button" onClick={() => remove(p.id)} className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white">
-                <Trash2 size={14} className="inline" />
-              </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
       {status ? <p className="mt-4 text-sm text-slate-500">{status}</p> : null}
     </div>

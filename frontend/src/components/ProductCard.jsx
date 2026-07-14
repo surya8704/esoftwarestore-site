@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Eye, ShoppingCart, Star } from 'lucide-react'
+import { Eye, Package, ShoppingCart, Star } from 'lucide-react'
 import { formatPrice, discountPercent, formatSoldRecently } from '../lib/api'
 import { reviewCountForProduct } from '../lib/reviews'
 import ProductImage from './ProductImage'
@@ -31,11 +31,18 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
   const hasOriginal = product.originalPrice && product.originalPrice > price
   const soldRecently = formatSoldRecently(product)
   const reviewCount = product.reviewCount ?? reviewCountForProduct(product)
+  const isBundle = product.isBundle || product.productType === 'bundle'
+  const bundleCount = product.bundleContents?.length ?? product.bundleItems?.length ?? 0
 
   return (
     <article className="product-card group relative flex h-full flex-col">
       <Link to={`/product/${product.slug}`} className="relative block aspect-square overflow-hidden bg-store-hover">
         {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
+        {isBundle ? (
+          <span className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-[#7c3aed] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
+            <Package size={10} /> Bundle{bundleCount ? ` · ${bundleCount}` : ''}
+          </span>
+        ) : null}
         <ProductImage
           product={product}
           alt={product.name}

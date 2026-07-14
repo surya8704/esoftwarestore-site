@@ -3,29 +3,47 @@ import { mapId } from '../db/client.js'
 import { OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
 import { parseJsonList } from '../lib/utils.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
+import { validateAndNormalizeBundleItems } from '../lib/bundles.js'
 import { config } from '../config.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 
 const countryCodeList = z.array(z.string().trim().toUpperCase().length(2)).optional().default([])
 
-const productSchema = z.object({
-  name: z.string().min(2),
-  slug: z.string().min(2),
-  category: z.string().min(2),
-  price: z.coerce.number().int().min(1),
-  originalPrice: z.coerce.number().int().min(1),
-  rating: z.coerce.number().min(1).max(5),
-  stock: z.coerce.number().int().min(0),
-  licenseType: z.string().min(2),
-  imageUrl: z.string().url().or(z.literal('')).optional(),
-  visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
-  description: z.string().max(1000).optional().default(''),
-  hidePrice: z.boolean().optional(),
-  hideCart: z.boolean().optional(),
-  vendorId: z.string().optional(),
-  allowedCountries: countryCodeList,
-  blockedCountries: countryCodeList,
+const bundleItemSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.coerce.number().int().min(1).default(1),
 })
+
+const productSchema = z
+  .object({
+    name: z.string().min(2),
+    slug: z.string().min(2),
+    category: z.string().min(2),
+    productType: z.enum(['standard', 'bundle']).default('standard'),
+    bundleItems: z.array(bundleItemSchema).optional().default([]),
+    price: z.coerce.number().int().min(1),
+    originalPrice: z.coerce.number().int().min(1),
+    rating: z.coerce.number().min(1).max(5),
+    stock: z.coerce.number().int().min(0),
+    licenseType: z.string().min(2),
+    imageUrl: z.string().url().or(z.literal('')).optional(),
+    visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
+    description: z.string().max(1000).optional().default(''),
+    hidePrice: z.boolean().optional(),
+    hideCart: z.boolean().optional(),
+    vendorId: z.string().optional(),
+    allowedCountries: countryCodeList,
+    blockedCountries: countryCodeList,
+  })
+  .superRefine((data, ctx) => {
+    if (data.productType === 'bundle' && (data.bundleItems?.length ?? 0) < 2) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['bundleItems'],
+        message: 'Bundles must include at least 2 products',
+      })
+    }
+  })
 
 function encodeCountryList(list) {
   if (!list?.length) return null
@@ -34,8 +52,15 @@ function encodeCountryList(list) {
 
 const normalizeProduct = (product) => {
   const p = mapId(product)
+  const productType = p.productType === 'bundle' ? 'bundle' : 'standard'
   return {
     ...p,
+    productType,
+    isBundle: productType === 'bundle',
+    bundleItems: (p.bundleItems ?? []).map((item) => ({
+      productId: String(item.productId?._id ?? item.productId ?? ''),
+      quantity: Number(item.quantity) || 1,
+    })),
     rating: Number(p.rating) / 10,
     price: Number(p.price),
     originalPrice: Number(p.originalPrice),
@@ -48,15 +73,24 @@ const normalizeProduct = (product) => {
 }
 
 function productWriteFields(payload) {
+  const productType = payload.productType === 'bundle' ? 'bundle' : 'standard'
   return {
     name: payload.name,
     slug: payload.slug,
     category: payload.category,
+    productType,
+    bundleItems:
+      productType === 'bundle'
+        ? (payload.bundleItems ?? []).map((item) => ({
+            productId: item.productId,
+            quantity: Math.max(1, Number(item.quantity) || 1),
+          }))
+        : [],
     price: payload.price,
     originalPrice: payload.originalPrice,
     rating: Math.round(payload.rating * 10),
     stock: payload.stock,
-    licenseType: payload.licenseType,
+    licenseType: productType === 'bundle' ? payload.licenseType || 'Bundle deal' : payload.licenseType,
     imageUrl: payload.imageUrl || null,
     visualAccent: payload.visualAccent,
     description: payload.description,
@@ -65,6 +99,24 @@ function productWriteFields(payload) {
     allowedCountries: encodeCountryList(payload.allowedCountries),
     blockedCountries: encodeCountryList(payload.blockedCountries),
   }
+}
+
+/** Parse body + validate bundle children exist. */
+async function prepareProductPayload(body, { excludeProductId } = {}) {
+  const parsed = productSchema.safeParse(body)
+  if (!parsed.success) {
+    const first = parsed.error.issues?.[0]
+    throw new Error(first?.message || 'Invalid product data')
+  }
+  const payload = parsed.data
+  if (payload.productType === 'bundle') {
+    payload.bundleItems = await validateAndNormalizeBundleItems(payload.bundleItems, {
+      excludeProductId,
+    })
+  } else {
+    payload.bundleItems = []
+  }
+  return payload
 }
 
 function mapVendorPublic(vendor) {
@@ -173,7 +225,12 @@ export async function vendorRoutes(app) {
     denyUnless(app, request, 'canManageProducts')
     denyUnless(app, request, 'canEditPrices')
 
-    const payload = productSchema.parse(request.body)
+    let payload
+    try {
+      payload = await prepareProductPayload(request.body)
+    } catch (err) {
+      throw app.httpErrors.badRequest(err.message || 'Invalid product')
+    }
     const existing = await Product.findOne({ slug: payload.slug })
     if (existing) throw app.httpErrors.conflict('Slug already exists')
 
@@ -195,7 +252,12 @@ export async function vendorRoutes(app) {
       throw app.httpErrors.notFound('Product not found')
     }
 
-    const payload = productSchema.parse(request.body)
+    let payload
+    try {
+      payload = await prepareProductPayload(request.body, { excludeProductId: existing._id })
+    } catch (err) {
+      throw app.httpErrors.badRequest(err.message || 'Invalid product')
+    }
     const fields = productWriteFields(payload)
 
     if (!vendorHasPermission(request.vendorContext?.permissions, 'canEditPrices') && request.user.role !== 'admin') {
@@ -288,4 +350,11 @@ export async function vendorRoutes(app) {
   })
 }
 
-export { vendorStats, normalizeProduct, productSchema, productWriteFields, mapVendorPublic }
+export {
+  vendorStats,
+  normalizeProduct,
+  productSchema,
+  productWriteFields,
+  prepareProductPayload,
+  mapVendorPublic,
+}

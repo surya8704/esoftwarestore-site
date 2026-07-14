@@ -49,6 +49,17 @@ const productSchema = new mongoose.Schema({
   slug: { type: String, required: true, maxlength: 140, unique: true },
   name: { type: String, required: true, maxlength: 160 },
   category: { type: String, required: true, maxlength: 100 },
+  productType: {
+    type: String,
+    required: true,
+    maxlength: 20,
+    enum: ['standard', 'bundle'],
+    default: 'standard',
+  },
+  bundleItems: [{
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    quantity: { type: Number, required: true, default: 1, min: 1 },
+  }],
   price: { type: Number, required: true },
   originalPrice: { type: Number, required: true },
   rating: { type: Number, required: true },
@@ -195,7 +206,7 @@ const orderItemSchema = new mongoose.Schema({
   productName: { type: String, required: true, maxlength: 160 },
   quantity: { type: Number, required: true, default: 1 },
   unitPrice: { type: Number, required: true },
-  licenseKey: { type: String, maxlength: 200 },
+  licenseKey: { type: String, maxlength: 2000 },
   downloadUrl: { type: String, maxlength: 500 },
   deliveryDescription: { type: String, maxlength: 2000 },
   deliveryAttachments: [{
@@ -204,6 +215,9 @@ const orderItemSchema = new mongoose.Schema({
     label: { type: String, maxlength: 120 },
     filename: { type: String, maxlength: 120 },
   }],
+  /** Set when this line was expanded from a sold as product-bundles deal */
+  bundleProductId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+  bundleProductName: { type: String, maxlength: 160 },
   keySentAt: Date,
 })
 

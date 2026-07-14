@@ -6,13 +6,21 @@ import { detectRegion, getRegionForCountry, COUNTRY_REGION } from '../services/g
 import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES } from '../config.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
 import { attachReviewSummary, generateProductReviews } from '../lib/productReviews.js'
+import { attachBundleContents } from '../lib/bundles.js'
 
 const normalizeProduct = (product) => {
   const p = mapId(product)
   const rating = Number(p.rating) / 10
   const summary = attachReviewSummary({ ...p, rating })
+  const productType = p.productType === 'bundle' ? 'bundle' : 'standard'
   return {
     ...p,
+    productType,
+    isBundle: productType === 'bundle',
+    bundleItems: (p.bundleItems ?? []).map((item) => ({
+      productId: String(item.productId?._id ?? item.productId ?? ''),
+      quantity: Number(item.quantity) || 1,
+    })),
     rating,
     reviewCount: summary.reviewCount,
     price: Number(p.price),
@@ -73,8 +81,9 @@ export async function productRoutes(app) {
     const productIds = visible.map((p) => p._id)
     const context = await createPricingContext(productIds)
     const enriched = visible.map((product) => enrichProduct(product, context, country, currency))
+    const withBundles = await attachBundleContents(enriched)
 
-    return { products: enriched, country, currency }
+    return { products: withBundles, country, currency }
   })
 
   app.get('/api/products/:slug', async (request, reply) => {
@@ -87,16 +96,17 @@ export async function productRoutes(app) {
     const pricing = resolveProductPriceFromContext(product, context, { countryCode: country, currency })
     const variants = (context.variantsByProductId.get(String(product._id)) ?? []).map(mapId)
     const videos = await SupportVideo.find({ active: true }).lean()
+    const enriched = await attachBundleContents({
+      ...normalizeProduct(product),
+      displayPrice: pricing.unitPrice,
+      currency: pricing.currency,
+      paymentMethods: pricing.paymentMethods ?? COUNTRY_PAYMENTS[country] ?? COUNTRY_PAYMENTS.default,
+      shippingMode: pricing.shippingMode,
+      variants,
+    })
 
     return {
-      product: {
-        ...normalizeProduct(product),
-        displayPrice: pricing.unitPrice,
-        currency: pricing.currency,
-        paymentMethods: pricing.paymentMethods ?? COUNTRY_PAYMENTS[country] ?? COUNTRY_PAYMENTS.default,
-        shippingMode: pricing.shippingMode,
-        variants,
-      },
+      product: enriched,
       videos: videos.filter((v) => !v.productId || v.productId.toString() === product._id.toString()).map(mapId),
     }
   })

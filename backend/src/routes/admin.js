@@ -25,7 +25,7 @@ import { canProcessOrderRefund, getRefundableAmount, processOrderRefund, roundMo
 import { generateConfirmationCode, parseJsonList } from '../lib/utils.js'
 import { buildContactSummary } from '../lib/phone.js'
 import { hashPassword } from '../db/seed.js'
-import { normalizeProduct, productSchema, productWriteFields, vendorStats } from './vendor.js'
+import { normalizeProduct, productWriteFields, prepareProductPayload, vendorStats } from './vendor.js'
 import {
   defaultVendorPermissions,
   normalizeVendorPermissions,
@@ -485,6 +485,11 @@ export async function adminRoutes(app) {
   app.post('/api/admin/products/:id/license-keys/import', { preHandler: [app.requireAdmin] }, async (request, reply) => {
     const product = await Product.findById(request.params.id)
     if (!product) return reply.code(404).send({ message: 'Product not found' })
+    if (product.productType === 'bundle') {
+      throw app.httpErrors.badRequest(
+        'Bundle deals do not use their own key pool. Upload keys on each included product instead.',
+      )
+    }
 
     const file = await request.file()
     if (!file) throw app.httpErrors.badRequest('Upload an Excel (.xlsx/.xls) or CSV file of product keys')
@@ -526,7 +531,12 @@ export async function adminRoutes(app) {
   })
 
   app.post('/api/admin/products', { preHandler: [app.requireAdmin] }, async (request) => {
-    const payload = productSchema.parse(request.body)
+    let payload
+    try {
+      payload = await prepareProductPayload(request.body)
+    } catch (err) {
+      throw app.httpErrors.badRequest(err.message || 'Invalid product')
+    }
     const existing = await Product.findOne({ slug: payload.slug })
     if (existing) throw app.httpErrors.conflict('Slug already exists')
 
@@ -539,7 +549,12 @@ export async function adminRoutes(app) {
   })
 
   app.put('/api/admin/products/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
-    const payload = productSchema.parse(request.body)
+    let payload
+    try {
+      payload = await prepareProductPayload(request.body, { excludeProductId: request.params.id })
+    } catch (err) {
+      throw app.httpErrors.badRequest(err.message || 'Invalid product')
+    }
     const product = await Product.findByIdAndUpdate(
       request.params.id,
       {

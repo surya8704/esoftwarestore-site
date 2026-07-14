@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Heart, ShoppingCart, ZoomIn } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Heart, Package, ShoppingCart, ZoomIn } from 'lucide-react'
 import { api, formatPrice, trackPage, discountPercent, soldRecentlyCount, formatSoldRecently } from '../lib/api'
 import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_URL } from '../lib/contact'
 import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/products'
@@ -90,6 +90,12 @@ export default function ProductPage() {
 
   const watchers = 20 + (soldRecentlyCount(product) % 80)
   const soldRecently = formatSoldRecently(product)
+  const isBundle = product.isBundle || product.productType === 'bundle'
+  const bundleContents = product.bundleContents ?? []
+  const bundleListTotal = bundleContents.reduce(
+    (sum, item) => sum + Number(item.price || 0) * (Number(item.quantity) || 1),
+    0,
+  )
 
   return (
     <>
@@ -136,8 +142,51 @@ export default function ProductPage() {
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-store-muted">{product.category}</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-store-muted">
+              {isBundle ? 'Bundle deal' : product.category}
+            </p>
             <h1 className="mt-2 text-xl font-extrabold leading-tight text-store-heading sm:text-2xl md:text-3xl">{product.name}</h1>
+
+            {isBundle && bundleContents.length ? (
+              <div className="mt-4 rounded-2xl border border-store bg-store-hover/60 p-4">
+                <p className="inline-flex items-center gap-2 text-sm font-bold text-store-heading">
+                  <Package size={16} className="text-[#7c3aed]" /> What’s included
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {bundleContents.map((item) => (
+                    <li key={item.productId} className="flex items-center gap-3 text-sm">
+                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-store-surface">
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-store-muted">
+                            <Package size={14} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <Link to={`/product/${item.slug}`} className="font-semibold text-store-heading hover:text-[#f97316]">
+                          {item.name}
+                        </Link>
+                        {item.quantity > 1 ? (
+                          <span className="ml-2 text-xs text-store-muted">×{item.quantity}</span>
+                        ) : null}
+                      </div>
+                      {!product.hidePrice ? (
+                        <span className="shrink-0 text-xs text-store-muted line-through">
+                          {formatPrice(item.price * (item.quantity || 1), product.currency ?? currency)}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {!product.hidePrice && bundleListTotal > price ? (
+                  <p className="mt-3 text-xs font-semibold text-[#059669]">
+                    Save {formatPrice(bundleListTotal - price, product.currency ?? currency)} vs buying separately
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <ProductRatingBadge product={product} className="mt-3" />
 
