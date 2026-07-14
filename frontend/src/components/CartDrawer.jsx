@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ShoppingBag, Trash2, X } from 'lucide-react'
 import { formatPrice } from '../lib/api'
+import ProductImage from './ProductImage'
 
 export default function CartDrawer({ open, onClose, cart, currency, onRemove }) {
   const [removingId, setRemovingId] = useState(null)
@@ -52,9 +53,12 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove }) 
               {items.map((item) => (
                 <li key={item.id} className="flex gap-4 rounded-xl border border-store bg-store-subtle p-3">
                   <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-store-hover">
-                    {item.product?.imageUrl ? (
-                      <img src={item.product.imageUrl} alt="" className="h-full w-full object-cover" />
-                    ) : null}
+                    <ProductImage
+                      product={item.product}
+                      alt={item.product?.name ?? ''}
+                      visualAccent="from-slate-400 to-slate-600"
+                      fallbackLabel={item.product?.category ?? ''}
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold leading-snug text-store-heading">{item.product?.name}</p>

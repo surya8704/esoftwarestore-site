@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ShoppingCart, Star, X } from 'lucide-react'
 import { formatPrice, discountPercent } from '../lib/api'
+import ProductImage from './ProductImage'
 
 export default function QuickViewModal({ product, currency, onClose, onAddToCart }) {
   if (!product) return null
@@ -20,13 +21,12 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
         <div className="grid md:grid-cols-2">
           <div className="relative aspect-square bg-store-hover">
             {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
-            {product.imageUrl ? (
-              <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
-            ) : (
-              <div className={`flex h-full items-center justify-center bg-gradient-to-br ${product.visualAccent ?? 'from-slate-400 to-slate-600'} text-white`}>
-                {product.category}
-              </div>
-            )}
+            <ProductImage
+              product={product}
+              alt={product.name}
+              visualAccent={product.visualAccent ?? 'from-slate-400 to-slate-600'}
+              fallbackLabel={product.category}
+            />
           </div>
           <div className="flex flex-col p-6 md:p-8">
             <p className="text-xs font-bold uppercase tracking-wider text-store-muted">{product.category}</p>

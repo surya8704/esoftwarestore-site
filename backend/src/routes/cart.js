@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { mapId } from '../db/client.js'
 import { Cart, CartItem, Product } from '../db/models.js'
 import { generateSessionId } from '../lib/utils.js'
+import { resolveStoreProductImage } from '../lib/productImages.js'
 import { resolveProductPrice, validateCoupon } from '../services/pricing.js'
 import { trackAbandonedCart } from '../services/marketing.js'
 import { config } from '../config.js'
@@ -28,7 +29,15 @@ export async function cartRoutes(app) {
         })
         return {
           ...mapId(item),
-          product: product ? { id: product._id.toString(), name: product.name, slug: product.slug, imageUrl: product.imageUrl } : null,
+          product: product
+            ? {
+                id: product._id.toString(),
+                name: product.name,
+                slug: product.slug,
+                category: product.category,
+                imageUrl: resolveStoreProductImage(product),
+              }
+            : null,
           unitPrice: pricing.unitPrice,
           lineTotal: pricing.unitPrice * item.quantity,
         }

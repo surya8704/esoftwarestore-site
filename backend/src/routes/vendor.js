@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { mapId } from '../db/client.js'
 import { Order, OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
 import { parseJsonList } from '../lib/utils.js'
+import { resolveStoreProductImage } from '../lib/productImages.js'
 
 const countryCodeList = z.array(z.string().trim().toUpperCase().length(2)).optional().default([])
 
@@ -40,6 +41,7 @@ const normalizeProduct = (product) => {
     vendorId: p.vendorId?.toString?.() ?? p.vendorId,
     allowedCountries: parseJsonList(p.allowedCountries) ?? [],
     blockedCountries: parseJsonList(p.blockedCountries) ?? [],
+    imageUrl: resolveStoreProductImage(p),
   }
 }
 

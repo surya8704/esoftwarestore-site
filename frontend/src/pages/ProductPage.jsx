@@ -7,6 +7,7 @@ import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/prod
 import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
+import ProductImage from '../components/ProductImage'
 
 const TABS = [
   { id: 'description', label: 'Description' },
@@ -117,15 +118,15 @@ export default function ProductPage() {
               className={`store-card relative w-full overflow-hidden ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
             >
               {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
-              {product.imageUrl ? (
-                <img
-                  src={product.imageUrl}
-                  alt={product.name}
-                  className={`w-full object-cover transition-transform ${zoomed ? 'scale-125' : 'aspect-square'}`}
-                />
-              ) : (
-                <div className={`flex aspect-square items-center justify-center bg-gradient-to-br ${product.visualAccent}`} />
-              )}
+              <ProductImage
+                product={product}
+                alt={product.name}
+                visualAccent={product.visualAccent ?? 'from-slate-400 to-slate-600'}
+                fallbackLabel={product.category}
+                className={`w-full object-cover transition-transform ${zoomed ? 'scale-125' : 'aspect-square'}`}
+                fallbackClassName={zoomed ? 'min-h-[320px]' : 'aspect-square'}
+                loading="eager"
+              />
               <span className="absolute bottom-3 right-3 rounded bg-store-surface/90 px-2 py-1 text-xs text-store-body shadow">
                 <ZoomIn size={12} className="inline" /> Click to enlarge
               </span>

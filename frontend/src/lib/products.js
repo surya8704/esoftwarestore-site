@@ -1,9 +1,20 @@
 import { api, getApiRegion } from './api'
 import catalogData from '../../public/catalog.json'
+import { resolveStoreProductImage } from './productImages'
 
 const STATIC_KEY = 'catalogStatic'
-const bundledProducts = catalogData.products ?? []
+const bundledProducts = (catalogData.products ?? []).map((product) => ({
+  ...product,
+  imageUrl: resolveStoreProductImage(product),
+}))
 const cacheKey = (country, currency) => `products:${country}:${currency}`
+
+function withCoverImages(products = []) {
+  return products.map((product) => ({
+    ...product,
+    imageUrl: resolveStoreProductImage(product),
+  }))
+}
 
 function readJson(key) {
   try {
@@ -26,17 +37,17 @@ function writeJson(key, value) {
 export function getInstantProducts() {
   const { country, currency } = getApiRegion()
   const regional = readJson(cacheKey(country, currency))
-  if (regional?.length) return regional
+  if (regional?.length) return withCoverImages(regional)
 
   const staticCatalog = readJson(STATIC_KEY)
-  if (staticCatalog?.length) return staticCatalog
+  if (staticCatalog?.length) return withCoverImages(staticCatalog)
 
   return bundledProducts
 }
 
 export function cacheProducts(products, country, currency) {
   if (!products?.length) return
-  writeJson(cacheKey(country, currency), products)
+  writeJson(cacheKey(country, currency), withCoverImages(products))
 }
 
 export async function prefetchStaticCatalog() {
@@ -45,7 +56,7 @@ export async function prefetchStaticCatalog() {
     const response = await fetch('/catalog.json')
     if (!response.ok) return []
     const data = await response.json()
-    const products = data.products ?? []
+    const products = withCoverImages(data.products ?? [])
     writeJson(STATIC_KEY, products)
     return products
   } catch {

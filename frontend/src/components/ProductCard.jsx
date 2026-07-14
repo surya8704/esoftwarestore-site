@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Eye, ShoppingCart, Star } from 'lucide-react'
 import { formatPrice, discountPercent, formatSoldRecently } from '../lib/api'
+import ProductImage from './ProductImage'
 
 function StarRating({ rating = 0 }) {
   const stars = Math.round(rating)
@@ -30,18 +31,13 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
     <article className="product-card group relative flex h-full flex-col">
       <Link to={`/product/${product.slug}`} className="relative block aspect-square overflow-hidden bg-store-hover">
         {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
-        {product.imageUrl ? (
-          <img
-            src={product.imageUrl}
-            alt={product.name}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-            loading="lazy"
-          />
-        ) : (
-          <div className={`flex h-full items-center justify-center bg-gradient-to-br ${product.visualAccent ?? 'from-slate-400 to-slate-600'} text-sm font-semibold text-white`}>
-            {product.category}
-          </div>
-        )}
+        <ProductImage
+          product={product}
+          alt={product.name}
+          visualAccent={product.visualAccent ?? 'from-slate-400 to-slate-600'}
+          fallbackLabel={product.category}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+        />
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/40 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
           <span className="text-xs font-medium text-white">View details →</span>
         </div>
