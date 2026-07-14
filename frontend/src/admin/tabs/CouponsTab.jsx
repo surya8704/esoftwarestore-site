@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, LoaderCircle, Pause, Play, Plus, RefreshCw, Ticket, Trash2 } from 'lucide-react'
 import { dashboardApi, emptyCouponForm, formatMoney } from '../api'
+import { CountryRestrictionPicker, ProductRestrictionPicker, encodeList } from '../components/RestrictionPickers'
 
 function formatDate(value) {
   if (!value) return '—'
@@ -18,18 +19,39 @@ function discountLabel(coupon, formatMoneyFn) {
   return `${formatMoneyFn(coupon.discountValue)} off`
 }
 
+function restrictionSummary(coupon) {
+  const countries = coupon.countries?.length ? coupon.countries.join(', ') : 'All countries'
+  const products = coupon.restrictedProductIds?.length
+    ? `${coupon.restrictedProductIds.length} product(s)`
+    : 'All products'
+  return `${countries} · ${products}`
+}
+
 export default function CouponsTab() {
   const [coupons, setCoupons] = useState([])
+  const [products, setProducts] = useState([])
   const [form, setForm] = useState(emptyCouponForm)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [showForm, setShowForm] = useState(false)
 
-  const load = () => dashboardApi('/api/admin/coupons').then((d) => setCoupons(d.coupons ?? []))
+  const load = async () => {
+    const [couponData, productData] = await Promise.all([
+      dashboardApi('/api/admin/coupons'),
+      dashboardApi('/api/admin/products'),
+    ])
+    setCoupons(couponData.coupons ?? [])
+    setProducts(productData.products ?? [])
+  }
 
   useEffect(() => {
     load().catch((err) => setStatus(err.message))
   }, [])
+
+  const restrictionPayload = () => ({
+    countryCodes: encodeList(form.countryCodes),
+    productIds: encodeList(form.productIds),
+  })
 
   const copyCode = async (code) => {
     try {
@@ -54,6 +76,7 @@ export default function CouponsTab() {
         maxUses: form.maxUses === '' || form.maxUses == null ? null : Number(form.maxUses),
         active: form.active,
         expiresAt: form.expiresAt || null,
+        ...restrictionPayload(),
       }
       const result = await dashboardApi('/api/admin/coupons', {
         method: 'POST',
@@ -85,6 +108,7 @@ export default function CouponsTab() {
           maxUses: form.maxUses === '' || form.maxUses == null ? null : Number(form.maxUses),
           active: form.active,
           expiresAt: form.expiresAt || null,
+          ...restrictionPayload(),
         }),
       })
       await load()
@@ -135,7 +159,7 @@ export default function CouponsTab() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">Coupons</h2>
-          <p className="text-sm text-slate-500">Generate codes, launch campaigns, and pause anytime</p>
+          <p className="text-sm text-slate-500">Generate codes, restrict by country/product, and launch</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -252,6 +276,19 @@ export default function CouponsTab() {
             />
             Launch immediately (make live)
           </label>
+
+          <CountryRestrictionPicker
+            label="Country restriction (optional)"
+            hint="Leave empty for all countries. Selected countries only can use this coupon."
+            selected={form.countryCodes}
+            onChange={(countryCodes) => setForm({ ...form, countryCodes })}
+          />
+          <ProductRestrictionPicker
+            products={products}
+            selected={form.productIds}
+            onChange={(productIds) => setForm({ ...form, productIds })}
+          />
+
           <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
             <button
               type="submit"
@@ -281,6 +318,7 @@ export default function CouponsTab() {
             <tr>
               <th className="px-4 py-3">Code</th>
               <th className="px-4 py-3">Discount</th>
+              <th className="px-4 py-3">Restrictions</th>
               <th className="px-4 py-3">Min / Uses</th>
               <th className="px-4 py-3">Expires</th>
               <th className="px-4 py-3">Status</th>
@@ -290,7 +328,7 @@ export default function CouponsTab() {
           <tbody>
             {coupons.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   No coupons yet. Create one to launch a promo.
                 </td>
               </tr>
@@ -308,6 +346,7 @@ export default function CouponsTab() {
                       </div>
                     </td>
                     <td className="px-4 py-3">{discountLabel(coupon, formatMoney)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{restrictionSummary(coupon)}</td>
                     <td className="px-4 py-3 text-slate-500">
                       Min {formatMoney(coupon.minAmount)}
                       <br />

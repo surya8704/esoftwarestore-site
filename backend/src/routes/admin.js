@@ -21,10 +21,10 @@ import {
   summarizePaymentBreakdowns,
 } from '../services/paymentFees.js'
 import { canProcessOrderRefund, getRefundableAmount, processOrderRefund, roundMoney } from '../services/refunds.js'
-import { generateConfirmationCode } from '../lib/utils.js'
+import { generateConfirmationCode, parseJsonList } from '../lib/utils.js'
 import { buildContactSummary } from '../lib/phone.js'
 import { hashPassword } from '../db/seed.js'
-import { normalizeProduct, productSchema, vendorStats } from './vendor.js'
+import { normalizeProduct, productSchema, productWriteFields, vendorStats } from './vendor.js'
 
 const ORDER_STATUSES = ['pending', 'processing', 'completed', 'on_hold', 'cancelled', 'refunded']
 
@@ -45,8 +45,8 @@ const couponBodySchema = z.object({
   discountValue: z.number().positive(),
   minAmount: z.number().min(0).default(0),
   maxUses: z.number().int().positive().nullable().optional(),
-  countryCodes: z.string().trim().max(120).optional().nullable(),
-  productIds: z.string().trim().max(500).optional().nullable(),
+  countryCodes: z.string().trim().max(500).optional().nullable(),
+  productIds: z.string().trim().max(4000).optional().nullable(),
   active: z.boolean().default(true),
   expiresAt: z.union([z.string(), z.null()]).optional(),
 })
@@ -62,6 +62,8 @@ function parseExpiresAt(value) {
 function mapCoupon(coupon) {
   return {
     ...mapId(coupon),
+    countries: parseJsonList(coupon.countryCodes) ?? [],
+    restrictedProductIds: parseJsonList(coupon.productIds) ?? [],
     isExpired: Boolean(coupon.expiresAt && new Date(coupon.expiresAt) < new Date()),
     remainingUses:
       coupon.maxUses == null ? null : Math.max(0, Number(coupon.maxUses) - Number(coupon.usedCount ?? 0)),
@@ -376,19 +378,7 @@ export async function adminRoutes(app) {
 
     const product = await Product.create({
       vendorId: payload.vendorId ?? null,
-      name: payload.name,
-      slug: payload.slug,
-      category: payload.category,
-      price: payload.price,
-      originalPrice: payload.originalPrice,
-      rating: Math.round(payload.rating * 10),
-      stock: payload.stock,
-      licenseType: payload.licenseType,
-      imageUrl: payload.imageUrl || null,
-      visualAccent: payload.visualAccent,
-      description: payload.description,
-      hidePrice: payload.hidePrice ?? false,
-      hideCart: payload.hideCart ?? false,
+      ...productWriteFields(payload),
     })
 
     return { product: normalizeProduct(product) }
@@ -399,19 +389,7 @@ export async function adminRoutes(app) {
     const product = await Product.findByIdAndUpdate(
       request.params.id,
       {
-        name: payload.name,
-        slug: payload.slug,
-        category: payload.category,
-        price: payload.price,
-        originalPrice: payload.originalPrice,
-        rating: Math.round(payload.rating * 10),
-        stock: payload.stock,
-        licenseType: payload.licenseType,
-        imageUrl: payload.imageUrl || null,
-        visualAccent: payload.visualAccent,
-        description: payload.description,
-        hidePrice: payload.hidePrice ?? false,
-        hideCart: payload.hideCart ?? false,
+        ...productWriteFields(payload),
         vendorId: payload.vendorId ?? null,
       },
       { new: true },
@@ -827,6 +805,8 @@ export async function adminRoutes(app) {
       discountValue: z.number().positive(),
       minAmount: z.number().min(0).default(0),
       maxUses: z.number().int().positive().nullable().optional(),
+      countryCodes: z.string().trim().max(500).optional().nullable(),
+      productIds: z.string().trim().max(4000).optional().nullable(),
       active: z.boolean().default(true),
       expiresAt: z.union([z.string(), z.null()]).optional(),
     })
@@ -853,6 +833,8 @@ export async function adminRoutes(app) {
         discountValue: payload.discountValue,
         minAmount: payload.minAmount ?? 0,
         maxUses: payload.maxUses ?? null,
+        countryCodes: payload.countryCodes || undefined,
+        productIds: payload.productIds || undefined,
         active: payload.active ?? true,
         expiresAt: parseExpiresAt(payload.expiresAt),
         usedCount: 0,
@@ -869,8 +851,8 @@ export async function adminRoutes(app) {
       discountValue: z.number().positive().optional(),
       minAmount: z.number().min(0).optional(),
       maxUses: z.number().int().positive().nullable().optional(),
-      countryCodes: z.string().trim().max(120).nullable().optional(),
-      productIds: z.string().trim().max(500).nullable().optional(),
+      countryCodes: z.string().trim().max(500).nullable().optional(),
+      productIds: z.string().trim().max(4000).nullable().optional(),
       active: z.boolean().optional(),
       expiresAt: z.union([z.string(), z.null()]).optional(),
     })

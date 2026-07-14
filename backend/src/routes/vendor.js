@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { mapId } from '../db/client.js'
 import { Order, OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
+import { parseJsonList } from '../lib/utils.js'
+
+const countryCodeList = z.array(z.string().trim().toUpperCase().length(2)).optional().default([])
 
 const productSchema = z.object({
   name: z.string().min(2),
@@ -17,7 +20,14 @@ const productSchema = z.object({
   hidePrice: z.boolean().optional(),
   hideCart: z.boolean().optional(),
   vendorId: z.string().optional(),
+  allowedCountries: countryCodeList,
+  blockedCountries: countryCodeList,
 })
+
+function encodeCountryList(list) {
+  if (!list?.length) return null
+  return JSON.stringify(list.map((code) => String(code).toUpperCase()))
+}
 
 const normalizeProduct = (product) => {
   const p = mapId(product)
@@ -28,6 +38,28 @@ const normalizeProduct = (product) => {
     originalPrice: Number(p.originalPrice),
     stock: Number(p.stock),
     vendorId: p.vendorId?.toString?.() ?? p.vendorId,
+    allowedCountries: parseJsonList(p.allowedCountries) ?? [],
+    blockedCountries: parseJsonList(p.blockedCountries) ?? [],
+  }
+}
+
+function productWriteFields(payload) {
+  return {
+    name: payload.name,
+    slug: payload.slug,
+    category: payload.category,
+    price: payload.price,
+    originalPrice: payload.originalPrice,
+    rating: Math.round(payload.rating * 10),
+    stock: payload.stock,
+    licenseType: payload.licenseType,
+    imageUrl: payload.imageUrl || null,
+    visualAccent: payload.visualAccent,
+    description: payload.description,
+    hidePrice: payload.hidePrice ?? false,
+    hideCart: payload.hideCart ?? false,
+    allowedCountries: encodeCountryList(payload.allowedCountries),
+    blockedCountries: encodeCountryList(payload.blockedCountries),
   }
 }
 
@@ -121,19 +153,7 @@ export async function vendorRoutes(app) {
 
     const product = await Product.create({
       vendorId,
-      name: payload.name,
-      slug: payload.slug,
-      category: payload.category,
-      price: payload.price,
-      originalPrice: payload.originalPrice,
-      rating: Math.round(payload.rating * 10),
-      stock: payload.stock,
-      licenseType: payload.licenseType,
-      imageUrl: payload.imageUrl || null,
-      visualAccent: payload.visualAccent,
-      description: payload.description,
-      hidePrice: payload.hidePrice ?? false,
-      hideCart: payload.hideCart ?? false,
+      ...productWriteFields(payload),
     })
 
     return { product: normalizeProduct(product) }
@@ -150,21 +170,7 @@ export async function vendorRoutes(app) {
     const payload = productSchema.parse(request.body)
     const product = await Product.findByIdAndUpdate(
       request.params.id,
-      {
-        name: payload.name,
-        slug: payload.slug,
-        category: payload.category,
-        price: payload.price,
-        originalPrice: payload.originalPrice,
-        rating: Math.round(payload.rating * 10),
-        stock: payload.stock,
-        licenseType: payload.licenseType,
-        imageUrl: payload.imageUrl || null,
-        visualAccent: payload.visualAccent,
-        description: payload.description,
-        hidePrice: payload.hidePrice ?? false,
-        hideCart: payload.hideCart ?? false,
-      },
+      productWriteFields(payload),
       { new: true },
     )
 
@@ -239,4 +245,4 @@ export async function vendorRoutes(app) {
   })
 }
 
-export { vendorStats, normalizeProduct, productSchema }
+export { vendorStats, normalizeProduct, productSchema, productWriteFields }

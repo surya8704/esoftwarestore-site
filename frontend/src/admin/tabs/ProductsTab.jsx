@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ImagePlus, LoaderCircle, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { dashboardApi, uploadProductImage } from '../api'
+import { CountryRestrictionPicker } from '../components/RestrictionPickers'
 
 export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) {
   const [products, setProducts] = useState([])
@@ -72,6 +73,8 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
         stock: Number(form.stock),
         vendorId: form.vendorId || undefined,
         imageUrl: form.imageUrl || '',
+        allowedCountries: form.allowedCountries ?? [],
+        blockedCountries: form.blockedCountries ?? [],
       }
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
       if (editingId) {
@@ -104,8 +107,20 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
       visualAccent: product.visualAccent ?? 'from-sky-500 to-cyan-400',
       description: product.description ?? '',
       vendorId: product.vendorId ?? '',
+      allowedCountries: product.allowedCountries ?? [],
+      blockedCountries: product.blockedCountries ?? [],
     })
     setStatus('')
+  }
+
+  const geoLabel = (product) => {
+    const allowed = product.allowedCountries ?? []
+    const blocked = product.blockedCountries ?? []
+    if (!allowed.length && !blocked.length) return 'Worldwide'
+    const parts = []
+    if (allowed.length) parts.push(`Allow: ${allowed.join(', ')}`)
+    if (blocked.length) parts.push(`Block: ${blocked.join(', ')}`)
+    return parts.join(' · ')
   }
 
   const remove = async (id) => {
@@ -127,7 +142,7 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">{isAdmin ? 'All products' : 'My products'}</h2>
-          <p className="text-sm text-slate-500">{products.length} listings</p>
+          <p className="text-sm text-slate-500">{products.length} listings · country restrictions supported</p>
         </div>
         <button type="button" onClick={reset} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold dark:border-white/10">
           <Plus size={14} className="inline" /> New
@@ -200,6 +215,20 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
           <span className="mb-1 block text-xs font-medium">Description</span>
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
         </label>
+
+        <CountryRestrictionPicker
+          label="Allowed countries (optional)"
+          hint="Leave empty for worldwide. If set, product is only visible in selected countries."
+          selected={form.allowedCountries ?? []}
+          onChange={(allowedCountries) => setForm({ ...form, allowedCountries })}
+        />
+        <CountryRestrictionPicker
+          label="Blocked countries (optional)"
+          hint="Customers in these countries will not see this product."
+          selected={form.blockedCountries ?? []}
+          onChange={(blockedCountries) => setForm({ ...form, blockedCountries })}
+        />
+
         <div className="flex gap-2 sm:col-span-2">
           <button disabled={loading || uploading} className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {loading ? <LoaderCircle className="animate-spin" size={16} /> : editingId ? <Pencil size={16} /> : <Plus size={16} />}
@@ -227,6 +256,7 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
                   {p.category} • {formatMoney(p.price)} • Stock {p.stock}
                   {p.vendorName ? ` • ${p.vendorName}` : ''}
                 </p>
+                <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
               </div>
             </div>
             <div className="flex gap-2">

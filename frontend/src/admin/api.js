@@ -65,6 +65,8 @@ export const emptyProductForm = {
   visualAccent: 'from-sky-500 to-cyan-400',
   description: '',
   vendorId: '',
+  allowedCountries: [],
+  blockedCountries: [],
 }
 
 export const emptyVendorForm = {
@@ -92,4 +94,6 @@ export const emptyCouponForm = {
   expiresAt: '',
   active: true,
   generateCount: 1,
+  countryCodes: [],
+  productIds: [],
 }
