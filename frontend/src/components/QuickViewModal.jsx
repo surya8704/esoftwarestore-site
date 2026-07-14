@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ShoppingCart, Star, X } from 'lucide-react'
 import { formatPrice, discountPercent } from '../lib/api'
+import { reviewCountForProduct } from '../lib/reviews'
 import ProductImage from './ProductImage'
 
 export default function QuickViewModal({ product, currency, onClose, onAddToCart }) {
@@ -10,6 +11,7 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
   const discount = discountPercent(price, product.originalPrice)
   const hasOriginal = product.originalPrice && product.originalPrice > price
   const stars = Math.round(product.rating ?? 0)
+  const reviewCount = product.reviewCount ?? reviewCountForProduct(product)
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center p-0 sm:items-center sm:p-4">
@@ -37,7 +39,7 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star key={i} size={14} className={i < stars ? 'fill-current' : 'text-store-border'} strokeWidth={i < stars ? 0 : 1.5} />
                 ))}
-                <span className="ml-1 text-store-muted">({product.rating.toFixed(1)})</span>
+                <span className="ml-1 text-store-muted">({product.rating.toFixed(1)} · {reviewCount.toLocaleString()})</span>
               </div>
             ) : null}
 

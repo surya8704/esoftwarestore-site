@@ -683,6 +683,41 @@ body {
   animation: fade-in-up 0.5s ease forwards;
 }
 
+/* Announcement marquee */
+.announcement-marquee-viewport {
+  mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+}
+
+.announcement-marquee-track {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  animation: announcement-marquee 45s linear infinite;
+}
+
+.announcement-marquee:hover .announcement-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes announcement-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .announcement-marquee-track {
+    animation: none;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: center;
+    row-gap: 0.25rem;
+  }
+}
+
 [dir='rtl'] .store-container,
 [dir='rtl'] .product-card,
 [dir='rtl'] .store-card {

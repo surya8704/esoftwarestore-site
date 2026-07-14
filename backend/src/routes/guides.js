@@ -1,4 +1,21 @@
-import { loadGuides } from '../data/loadGuides.js'
+import {
+  findPublicGuideBySlug,
+  listPublicGuides,
+} from '../lib/siteContent.js'
+
+function toListItem(g) {
+  return {
+    id: g.externalId || g.id,
+    slug: g.slug,
+    title: g.title,
+    excerpt: g.excerpt,
+    publishedAt: g.publishedAt,
+    imageUrl: g.imageUrl,
+    categories: g.categories ?? [],
+    categorySlugs: g.categorySlugs ?? [],
+    sourceUrl: g.sourceUrl,
+  }
+}
 
 export async function guideRoutes(app) {
   app.get('/api/guides', async (request) => {
@@ -7,7 +24,7 @@ export async function guideRoutes(app) {
     const page = Math.max(1, parseInt(request.query.page ?? '1', 10) || 1)
     const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? '12', 10) || 12))
 
-    let guides = loadGuides().sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
+    let guides = await listPublicGuides()
 
     if (category) {
       const cat = category.toLowerCase()
@@ -31,17 +48,7 @@ export async function guideRoutes(app) {
     const totalPages = Math.max(1, Math.ceil(total / limit))
     const safePage = Math.min(page, totalPages)
     const start = (safePage - 1) * limit
-    const items = guides.slice(start, start + limit).map((g) => ({
-      id: g.externalId,
-      slug: g.slug,
-      title: g.title,
-      excerpt: g.excerpt,
-      publishedAt: g.publishedAt,
-      imageUrl: g.imageUrl,
-      categories: g.categories ?? [],
-      categorySlugs: g.categorySlugs ?? [],
-      sourceUrl: g.sourceUrl,
-    }))
+    const items = guides.slice(start, start + limit).map(toListItem)
 
     return {
       guides: items,
@@ -53,10 +60,10 @@ export async function guideRoutes(app) {
   })
 
   app.get('/api/guides/:slug', async (request, reply) => {
-    const guide = loadGuides().find((g) => g.slug === request.params.slug)
+    const guide = await findPublicGuideBySlug(request.params.slug)
     if (!guide) return reply.notFound('Guide not found')
 
-    const all = loadGuides()
+    const all = await listPublicGuides()
     const related = all
       .filter((g) => g.slug !== guide.slug)
       .filter((g) => {

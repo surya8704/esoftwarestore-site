@@ -8,12 +8,14 @@ import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
 import ProductImage from '../components/ProductImage'
+import ProductReviews, { ProductRatingBadge } from '../components/ProductReviews'
 
 const TABS = [
   { id: 'description', label: 'Description' },
   { id: 'shipping', label: 'Shipping & Delivery' },
   { id: 'detail', label: 'Product Detail' },
   { id: 'guide', label: 'Guide & Support' },
+  { id: 'reviews', label: 'Reviews' },
 ]
 
 function defaultVariantId(product) {
@@ -137,6 +139,8 @@ export default function ProductPage() {
             <p className="text-xs font-bold uppercase tracking-wider text-store-muted">{product.category}</p>
             <h1 className="mt-2 text-xl font-extrabold leading-tight text-store-heading sm:text-2xl md:text-3xl">{product.name}</h1>
 
+            <ProductRatingBadge product={product} className="mt-3" />
+
             {!product.hidePrice ? (
               <div className="mt-4 flex flex-wrap items-baseline gap-3">
                 <p className="text-3xl font-extrabold text-[#f97316]">{formatPrice(price, product.currency ?? currency)}</p>
@@ -197,7 +201,14 @@ export default function ProductPage() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setTab(t.id)}
+                onClick={() => {
+                  setTab(t.id)
+                  if (t.id === 'reviews') {
+                    requestAnimationFrame(() => {
+                      document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    })
+                  }
+                }}
                 className={`shrink-0 px-1 pb-3 text-sm whitespace-nowrap ${tab === t.id ? 'tab-active' : 'text-store-muted hover:text-[#f97316]'}`}
               >
                 {t.label}
@@ -240,8 +251,15 @@ export default function ProductPage() {
                 </p>
               </div>
             ) : null}
+            {tab === 'reviews' ? (
+              <p className="text-sm text-store-muted">
+                See the full ratings and multilingual customer reviews below this section.
+              </p>
+            ) : null}
           </div>
         </div>
+
+        <ProductReviews product={product} locale={locale} />
 
         {related.length > 0 ? (
           <section className="mt-16 border-t border-store pt-10">

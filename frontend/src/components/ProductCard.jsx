@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { Eye, ShoppingCart, Star } from 'lucide-react'
 import { formatPrice, discountPercent, formatSoldRecently } from '../lib/api'
+import { reviewCountForProduct } from '../lib/reviews'
 import ProductImage from './ProductImage'
 
-function StarRating({ rating = 0 }) {
+function StarRating({ rating = 0, count }) {
   const stars = Math.round(rating)
   if (!rating) return null
   return (
@@ -16,7 +17,10 @@ function StarRating({ rating = 0 }) {
           strokeWidth={i < stars ? 0 : 1.5}
         />
       ))}
-      <span className="ml-1 text-store-muted">({rating.toFixed(1)})</span>
+      <span className="ml-1 text-store-muted">
+        ({rating.toFixed(1)}
+        {count ? ` · ${count.toLocaleString()}` : ''})
+      </span>
     </div>
   )
 }
@@ -26,6 +30,7 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
   const discount = discountPercent(price, product.originalPrice)
   const hasOriginal = product.originalPrice && product.originalPrice > price
   const soldRecently = formatSoldRecently(product)
+  const reviewCount = product.reviewCount ?? reviewCountForProduct(product)
 
   return (
     <article className="product-card group relative flex h-full flex-col">
@@ -51,7 +56,7 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
           </h3>
         </Link>
 
-        <StarRating rating={product.rating} />
+        <StarRating rating={product.rating} count={reviewCount} />
 
         <p className="mt-1.5 text-[11px] font-semibold text-[#ea580c] sm:text-xs">
           {soldRecently} sold recently

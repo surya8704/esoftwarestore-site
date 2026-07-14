@@ -5,12 +5,16 @@ import { createPricingContext, resolveProductPriceFromContext } from '../service
 import { detectRegion, getRegionForCountry, COUNTRY_REGION } from '../services/geo.js'
 import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES } from '../config.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
+import { attachReviewSummary, generateProductReviews } from '../lib/productReviews.js'
 
 const normalizeProduct = (product) => {
   const p = mapId(product)
+  const rating = Number(p.rating) / 10
+  const summary = attachReviewSummary({ ...p, rating })
   return {
     ...p,
-    rating: Number(p.rating) / 10,
+    rating,
+    reviewCount: summary.reviewCount,
     price: Number(p.price),
     originalPrice: Number(p.originalPrice),
     stock: Number(p.stock),
@@ -47,6 +51,10 @@ export async function productRoutes(app) {
     countryPayments: COUNTRY_PAYMENTS,
     cdnUrl: config.cdnUrl,
     clientUrl: config.clientUrl,
+    googleClientId: config.googleClientId || null,
+    googleLoginEnabled: Boolean(config.googleClientId),
+    facebookAppId: config.facebookAppId || null,
+    facebookLoginEnabled: Boolean(config.facebookAppId && config.facebookAppSecret),
   }))
 
   app.get('/api/geo', async (request) => detectRegion(request))
@@ -91,5 +99,16 @@ export async function productRoutes(app) {
       },
       videos: videos.filter((v) => !v.productId || v.productId.toString() === product._id.toString()).map(mapId),
     }
+  })
+
+  app.get('/api/products/:slug/reviews', async (request, reply) => {
+    const country = request.headers['x-country'] ?? config.defaultCountry
+    const locale = request.query.locale ?? request.headers['x-locale'] ?? config.defaultLocale
+    const limit = parseInt(request.query.limit ?? '12', 10)
+    const product = await Product.findOne({ slug: request.params.slug }).lean()
+    if (!product || !isProductVisible(product, country)) return reply.notFound('Product not found')
+
+    const normalized = normalizeProduct(product)
+    return generateProductReviews(normalized, { locale, limit })
   })
 }

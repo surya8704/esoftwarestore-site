@@ -16,6 +16,7 @@ import ThemeToggle from './ThemeToggle'
 import ChatWidget from './ChatWidget'
 import MobileBottomNav from './MobileBottomNav'
 import StoreLogo from './StoreLogo'
+import AnnouncementMarquee from './AnnouncementMarquee'
 
 const FALLBACK_CATEGORIES = ['Windows', 'Design']
 
@@ -121,6 +122,8 @@ export default function Layout({ children }) {
           <span className="hidden md:inline">WhatsApp support available</span>
         </div>
       </div>
+
+      <AnnouncementMarquee />
 
       <header className="header-surface sticky top-0 z-50 shadow-sm">
         <div className="store-container flex items-center gap-4 py-3.5">

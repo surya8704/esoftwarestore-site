@@ -153,6 +153,35 @@ export function AppProvider({ children }) {
     return data
   }, [])
 
+  const loginWithSocial = useCallback(async ({ provider, idToken, accessToken }, { remember = true } = {}) => {
+    const data = await api('/api/auth/social', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider,
+        idToken,
+        accessToken,
+        countryCode: country,
+        locale,
+      }),
+    })
+    persistAuthSession({
+      token: data.token,
+      user: data.user,
+      email: remember ? data.user.email : undefined,
+    })
+    if (!remember) clearRememberedEmail()
+    setUser(data.user)
+    return data
+  }, [country, locale])
+
+  const loginWithGoogle = useCallback(async (idToken, options) => (
+    loginWithSocial({ provider: 'google', idToken }, options)
+  ), [loginWithSocial])
+
+  const loginWithFacebook = useCallback(async (accessToken, options) => (
+    loginWithSocial({ provider: 'facebook', accessToken }, options)
+  ), [loginWithSocial])
+
   const signup = useCallback(async (payload, { remember = true } = {}) => {
     const normalizedEmail = payload.email?.trim().toLowerCase()
     const data = await api('/api/auth/signup', {
@@ -204,6 +233,9 @@ export function AppProvider({ children }) {
       setTheme,
       toggleTheme,
       login,
+      loginWithGoogle,
+      loginWithFacebook,
+      loginWithSocial,
       signup,
       logout,
       addToCart,
@@ -212,7 +244,7 @@ export function AppProvider({ children }) {
     }),
     [
       user, authReady, config, cart, country, currency, locale,
-      theme, setTheme, toggleTheme, refreshCart, removeFromCart, login, signup, logout,
+      theme, setTheme, toggleTheme, refreshCart, removeFromCart, login, loginWithGoogle, loginWithFacebook, loginWithSocial, signup, logout,
     ],
   )
 

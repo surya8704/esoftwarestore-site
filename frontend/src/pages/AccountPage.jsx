@@ -2,10 +2,22 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { readRememberedEmail } from '../lib/authStorage'
 import SEO from '../components/SEO'
+import SocialLoginButtons from '../components/SocialLoginButtons'
 import { formatPrice } from '../lib/api'
 
 export default function AccountPage() {
-  const { user, login, signup, logout, country, locale, currency } = useApp()
+  const {
+    user,
+    login,
+    loginWithGoogle,
+    loginWithFacebook,
+    signup,
+    logout,
+    country,
+    locale,
+    currency,
+    config,
+  } = useApp()
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState(() => ({
     name: '',
@@ -59,6 +71,30 @@ export default function AccountPage() {
     }
   }
 
+  const handleGoogleCredential = async (idToken) => {
+    setError('')
+    setLoading(true)
+    try {
+      await loginWithGoogle(idToken, { remember: rememberMe })
+    } catch (err) {
+      setError(err.message || 'Google sign-in failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleFacebookAccessToken = async (accessToken) => {
+    setError('')
+    setLoading(true)
+    try {
+      await loginWithFacebook(accessToken, { remember: rememberMe })
+    } catch (err) {
+      setError(err.message || 'Facebook sign-in failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="store-container py-10">
       <SEO title="My Account" />
@@ -82,6 +118,13 @@ export default function AccountPage() {
               Register
             </button>
           </div>
+
+          <SocialLoginButtons
+            config={config}
+            onGoogleCredential={handleGoogleCredential}
+            onFacebookAccessToken={handleFacebookAccessToken}
+            disabled={loading}
+          />
 
           <form onSubmit={submit} className="space-y-3">
             {mode === 'signup' ? (
@@ -150,6 +193,11 @@ export default function AccountPage() {
           <div className="border-b border-store pb-4">
             <p className="font-semibold text-store-heading">{user.name}</p>
             <p className="mt-1 text-sm text-store-muted">{user.email}</p>
+            {user.socialProvider ? (
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-sky-600">
+                Signed in with {user.socialProvider}
+              </p>
+            ) : null}
             {user.role !== 'customer' ? (
               <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#f97316]">{user.role}</p>
             ) : null}

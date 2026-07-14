@@ -32,7 +32,8 @@ function money(amount, currency = 'INR') {
   return formatMoney(amount, currency)
 }
 
-export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
+export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp, vendorPermissions }) {
+  const canViewLicenseKeys = isAdmin || vendorPermissions?.canViewLicenseKeys !== false
   const fmt = formatMoneyProp ?? formatMoney
   const [orders, setOrders] = useState([])
   const [summary, setSummary] = useState(null)
@@ -40,6 +41,7 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [searchEmail, setSearchEmail] = useState('')
+  const [awaitingKeys, setAwaitingKeys] = useState(0)
 
   const toggleExpanded = (id) => {
     setExpandedId((current) => (current === id ? null : id))
@@ -57,6 +59,10 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
       const data = await dashboardApi(path)
       setOrders(data.orders ?? [])
       setSummary(isAdmin ? data.summary ?? null : null)
+      if (isAdmin) {
+        const overview = await dashboardApi('/api/admin/license-keys/overview')
+        setAwaitingKeys(overview.awaitingKeys ?? 0)
+      }
     } catch (err) {
       setOrders([])
       setSummary(null)
@@ -76,7 +82,7 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
     load(searchEmail.trim())
   }
 
-  const adminColCount = 4
+  const adminColCount = 5
 
   return (
     <div>
@@ -97,6 +103,13 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
           <RefreshCw size={14} /> Refresh
         </button>
       </div>
+
+      {isAdmin && awaitingKeys > 0 ? (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+          <strong>{awaitingKeys}</strong> paid order{awaitingKeys === 1 ? '' : 's'} waiting for product keys.
+          Upload Excel keys under Products, then use “Process waiting orders”, or fulfill these manually below (status stays <strong>pending</strong> until a key is sent).
+        </div>
+      ) : null}
 
       {isAdmin && summary ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -148,18 +161,18 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
       {error ? <p className="mt-4 text-sm text-rose-500">{error}</p> : null}
       {loading ? <p className="mt-6 text-sm text-slate-500">Loading orders...</p> : null}
 
-      <div className="mt-6">
+      <div className="mt-6 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 dark:border-white/10">
               <th className="py-3 pr-4">Date</th>
+              <th className="py-3 pr-4">Status</th>
               <th className="py-3 pr-4">Customer</th>
               <th className="py-3 pr-4">Products</th>
               {!isAdmin ? (
                 <>
                   <th className="py-3 pr-4">Amount</th>
-                  <th className="py-3 pr-4">Status</th>
-                  <th className="py-3">License</th>
+                  {canViewLicenseKeys ? <th className="py-3">License</th> : null}
                 </>
               ) : (
                 <th className="py-3 text-right"> </th>
@@ -177,18 +190,22 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp }) {
               return (
                 <Fragment key={orderId}>
                   <tr className="border-b border-slate-100 dark:border-white/5">
-                    <td className="py-3 pr-4 text-slate-500">{formatDate(o.createdAt)}</td>
+                    <td className="py-3 pr-4 text-slate-500 whitespace-nowrap">{formatDate(o.createdAt)}</td>
+                    <td className="py-3 pr-4">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${statusBadge(displayStatus)}`}>
+                        {String(displayStatus ?? 'unknown').replace(/_/g, ' ')}
+                      </span>
+                    </td>
                     <td className="py-3 pr-4">{o.customerEmail ?? '—'}</td>
-                    <td className="py-3 pr-4">{o.productName ?? '—'}</td>
+                    <td className="py-3 pr-4 max-w-[220px] truncate" title={o.productName ?? ''}>
+                      {o.productName ?? '—'}
+                    </td>
                     {!isAdmin ? (
                       <>
                         <td className="py-3 pr-4">{fmt(o.total ?? o.amount ?? 0, currency)}</td>
-                        <td className="py-3 pr-4">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${statusBadge(displayStatus)}`}>
-                            {displayStatus?.replace('_', ' ') ?? 'unknown'}
-                          </span>
-                        </td>
-                        <td className="py-3 font-mono text-xs">{o.licenseKey ?? '—'}</td>
+                        {canViewLicenseKeys ? (
+                          <td className="py-3 font-mono text-xs">{o.licenseKey ?? '—'}</td>
+                        ) : null}
                       </>
                     ) : (
                       <td className="py-3 text-right">

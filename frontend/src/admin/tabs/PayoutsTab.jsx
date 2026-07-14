@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Check, LoaderCircle, RefreshCw, X } from 'lucide-react'
 import { dashboardApi } from '../api'
 
-export default function PayoutsTab({ isAdmin, formatMoney }) {
+export default function PayoutsTab({ isAdmin, formatMoney, vendorPermissions }) {
+  const canRequestPayout = isAdmin || vendorPermissions?.canManagePayouts !== false
   const [payouts, setPayouts] = useState([])
   const [balance, setBalance] = useState(0)
   const [pendingTotal, setPendingTotal] = useState(0)
@@ -116,7 +117,7 @@ export default function PayoutsTab({ isAdmin, formatMoney }) {
         )}
       </div>
 
-      {!isAdmin ? (
+      {!isAdmin && canRequestPayout ? (
         <div className="mt-4 rounded-2xl bg-sky-50 p-4 dark:bg-sky-500/10">
           <p className="text-sm text-slate-600 dark:text-slate-300">Request a withdrawal from your available balance</p>
           <form onSubmit={requestPayout} className="mt-4 flex gap-2">
@@ -134,8 +135,10 @@ export default function PayoutsTab({ isAdmin, formatMoney }) {
             </button>
           </form>
         </div>
-      ) : (
+      ) : isAdmin ? (
         <p className="mt-4 text-sm text-slate-500">Approve or reject vendor withdrawal requests below.</p>
+      ) : (
+        <p className="mt-4 text-sm text-amber-700">Payout requests are disabled for your account. Contact the platform admin.</p>
       )}
 
       <div className="mt-6 space-y-3">

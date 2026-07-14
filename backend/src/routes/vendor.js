@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { mapId } from '../db/client.js'
-import { Order, OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
+import { OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
 import { parseJsonList } from '../lib/utils.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
 import { config } from '../config.js'
+import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 
 const countryCodeList = z.array(z.string().trim().toUpperCase().length(2)).optional().default([])
 
@@ -66,16 +67,33 @@ function productWriteFields(payload) {
   }
 }
 
+function mapVendorPublic(vendor) {
+  const base = mapId(vendor)
+  return {
+    ...base,
+    permissions: normalizeVendorPermissions(vendor.permissions),
+  }
+}
+
+function denyUnless(app, request, permissionKey) {
+  if (request.user.role === 'admin') return
+  if (!vendorHasPermission(request.vendorContext?.permissions, permissionKey)) {
+    throw app.httpErrors.forbidden(`You do not have permission: ${permissionKey}`)
+  }
+}
+
 async function vendorStats(vendorId) {
   const vendor = await Vendor.findById(vendorId)
   if (!vendor) return null
 
   const productCount = await Product.countDocuments({ vendorId })
   const productIds = (await Product.find({ vendorId }).select('_id')).map((p) => p._id)
+  const permissions = normalizeVendorPermissions(vendor.permissions)
 
   if (productIds.length === 0) {
     return {
-      vendor: mapId(vendor),
+      vendor: mapVendorPublic(vendor),
+      permissions,
       productCount: 0,
       orderCount: 0,
       grossRevenue: 0,
@@ -120,7 +138,8 @@ async function vendorStats(vendorId) {
   const pendingPayout = Number(pendingResult[0]?.total ?? 0)
 
   return {
-    vendor: mapId(vendor),
+    vendor: mapVendorPublic(vendor),
+    permissions,
     productCount,
     orderCount,
     grossRevenue,
@@ -143,6 +162,7 @@ export async function vendorRoutes(app) {
   app.get('/api/vendor/products', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canManageProducts')
     const result = await Product.find({ vendorId }).sort({ createdAt: -1 })
     return { products: result.map(normalizeProduct) }
   })
@@ -150,6 +170,9 @@ export async function vendorRoutes(app) {
   app.post('/api/vendor/products', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canManageProducts')
+    denyUnless(app, request, 'canEditPrices')
+
     const payload = productSchema.parse(request.body)
     const existing = await Product.findOne({ slug: payload.slug })
     if (existing) throw app.httpErrors.conflict('Slug already exists')
@@ -165,24 +188,30 @@ export async function vendorRoutes(app) {
   app.put('/api/vendor/products/:id', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canManageProducts')
+
     const existing = await Product.findById(request.params.id)
     if (!existing || existing.vendorId?.toString() !== vendorId) {
       throw app.httpErrors.notFound('Product not found')
     }
 
     const payload = productSchema.parse(request.body)
-    const product = await Product.findByIdAndUpdate(
-      request.params.id,
-      productWriteFields(payload),
-      { new: true },
-    )
+    const fields = productWriteFields(payload)
 
+    if (!vendorHasPermission(request.vendorContext?.permissions, 'canEditPrices') && request.user.role !== 'admin') {
+      fields.price = existing.price
+      fields.originalPrice = existing.originalPrice
+    }
+
+    const product = await Product.findByIdAndUpdate(request.params.id, fields, { new: true })
     return { product: normalizeProduct(product) }
   })
 
   app.delete('/api/vendor/products/:id', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canManageProducts')
+
     const existing = await Product.findById(request.params.id)
     if (!existing || existing.vendorId?.toString() !== vendorId) {
       throw app.httpErrors.notFound('Product not found')
@@ -194,12 +223,17 @@ export async function vendorRoutes(app) {
   app.get('/api/vendor/orders', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canViewOrders')
+
+    const canSeeKeys =
+      request.user.role === 'admin' ||
+      vendorHasPermission(request.vendorContext?.permissions, 'canViewLicenseKeys')
 
     const productIds = (await Product.find({ vendorId }).select('_id')).map((p) => p._id)
     if (!productIds.length) return { orders: [] }
 
     const items = await OrderItem.find({ productId: { $in: productIds } })
-      .populate({ path: 'orderId', select: 'customerEmail paymentStatus total createdAt currency' })
+      .populate({ path: 'orderId', select: 'customerEmail paymentStatus orderStatus total createdAt currency' })
 
     const orders = items
       .map((item) => ({
@@ -207,13 +241,16 @@ export async function vendorRoutes(app) {
         orderId: item.orderId?._id?.toString?.() ?? item.orderId,
         customerEmail: item.orderId?.customerEmail,
         paymentStatus: item.orderId?.paymentStatus,
+        orderStatus:
+          item.orderId?.orderStatus ??
+          (item.orderId?.paymentStatus === 'paid' ? 'processing' : 'pending'),
         total: item.orderId?.total,
         currency: item.orderId?.currency,
         createdAt: item.orderId?.createdAt,
         productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        licenseKey: item.licenseKey,
+        licenseKey: canSeeKeys ? item.licenseKey : null,
       }))
       .sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0))
 
@@ -223,6 +260,7 @@ export async function vendorRoutes(app) {
   app.get('/api/vendor/payouts', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canManagePayouts')
     const payouts = await VendorPayout.find({ vendorId }).sort({ createdAt: -1 })
     return { payouts: payouts.map(mapId) }
   })
@@ -230,6 +268,8 @@ export async function vendorRoutes(app) {
   app.post('/api/vendor/payouts/request', { preHandler: [app.requireVendor] }, async (request, reply) => {
     const vendorId = await app.resolveVendorId(request, reply)
     if (!vendorId) return
+    denyUnless(app, request, 'canManagePayouts')
+
     const schema = z.object({ amount: z.number().int().min(1) })
     const { amount } = schema.parse(request.body)
     const stats = await vendorStats(vendorId)
@@ -248,4 +288,4 @@ export async function vendorRoutes(app) {
   })
 }
 
-export { vendorStats, normalizeProduct, productSchema, productWriteFields }
+export { vendorStats, normalizeProduct, productSchema, productWriteFields, mapVendorPublic }

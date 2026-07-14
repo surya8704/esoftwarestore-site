@@ -1,17 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
-import { ImagePlus, LoaderCircle, Pencil, Plus, Trash2, Upload } from 'lucide-react'
-import { dashboardApi, uploadProductImage } from '../api'
-import { CountryRestrictionPicker } from '../components/RestrictionPickers'
+import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { dashboardApi, uploadProductImage, uploadProductLicenseKeys } from '../api'
+import { defaultVendorPermissions } from '../vendorAccess'
 
-export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) {
+export default function ProductsTab({
+  isAdmin,
+  emptyProductForm,
+  formatMoney,
+  vendorPermissions = defaultVendorPermissions(),
+}) {
   const [products, setProducts] = useState([])
   const [vendors, setVendors] = useState([])
   const [form, setForm] = useState(emptyProductForm)
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [keysUploadingId, setKeysUploadingId] = useState(null)
+  const [keyOverview, setKeyOverview] = useState(null)
   const [status, setStatus] = useState('')
   const fileInputRef = useRef(null)
+  const keysInputRef = useRef(null)
+  const keysProductIdRef = useRef(null)
+
+  const canEditPrices = isAdmin || vendorPermissions.canEditPrices
+  const canUploadImages = isAdmin || vendorPermissions.canUploadImages
+  const canCreateProducts = isAdmin || (vendorPermissions.canManageProducts && vendorPermissions.canEditPrices)
 
   const productsPath = isAdmin ? '/api/admin/products' : '/api/vendor/products'
 
@@ -19,8 +32,12 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
     const data = await dashboardApi(productsPath)
     setProducts(data.products)
     if (isAdmin) {
-      const v = await dashboardApi('/api/admin/vendors')
+      const [v, overview] = await Promise.all([
+        dashboardApi('/api/admin/vendors'),
+        dashboardApi('/api/admin/license-keys/overview'),
+      ])
       setVendors(v.vendors)
+      setKeyOverview(overview)
     }
   }
 
@@ -137,6 +154,59 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
     }
   }
 
+  const openKeysPicker = (productId) => {
+    keysProductIdRef.current = productId
+    keysInputRef.current?.click()
+  }
+
+  const handleKeysUpload = async (event) => {
+    const file = event.target.files?.[0]
+    const productId = keysProductIdRef.current
+    if (!file || !productId) return
+
+    setKeysUploadingId(productId)
+    setStatus('')
+    try {
+      const result = await uploadProductLicenseKeys(productId, file)
+      const delivered = result.autoDelivery?.delivered ?? 0
+      setStatus(
+        `Imported ${result.imported} keys for ${result.productName}` +
+          (result.duplicates ? ` · ${result.duplicates} duplicates skipped` : '') +
+          ` · pool ${result.available} available` +
+          (delivered ? ` · auto-delivered ${delivered} waiting order(s)` : '') +
+          (result.awaitingKeys ? ` · ${result.awaitingKeys} still waiting for keys` : ''),
+      )
+      await load()
+    } catch (err) {
+      setStatus(err.message)
+    } finally {
+      setKeysUploadingId(null)
+      keysProductIdRef.current = null
+      if (keysInputRef.current) keysInputRef.current.value = ''
+    }
+  }
+
+  const runAutoDeliver = async () => {
+    setLoading(true)
+    setStatus('')
+    try {
+      const result = await dashboardApi('/api/admin/orders/auto-deliver-keys', {
+        method: 'POST',
+        body: JSON.stringify({ limit: 100 }),
+      })
+      setStatus(
+        `Auto-delivery: ${result.delivered} completed` +
+          (result.stillWaiting ? ` · ${result.stillWaiting} still awaiting keys` : '') +
+          (result.failed ? ` · ${result.failed} failed` : ''),
+      )
+      await load()
+    } catch (err) {
+      setStatus(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between gap-4">
@@ -144,15 +214,62 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
           <h2 className="text-2xl font-bold">{isAdmin ? 'All products' : 'My products'}</h2>
           <p className="text-sm text-slate-500">{products.length} listings · country restrictions supported</p>
         </div>
-        <button type="button" onClick={reset} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold dark:border-white/10">
+        <button
+          type="button"
+          onClick={reset}
+          disabled={!canCreateProducts && !editingId}
+          className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-white/10"
+        >
           <Plus size={14} className="inline" /> New
         </button>
       </div>
 
+      {isAdmin ? (
+        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-500/20 dark:bg-sky-500/10">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
+                <KeyRound size={16} /> Automatic key delivery
+              </p>
+              <p className="mt-1 text-sm text-sky-800/80 dark:text-sky-200/80">
+                Upload an Excel/CSV of unique product keys per product. Paid orders pull the next unused key, email the customer, and mark the order completed. If the pool is empty, the order stays <strong>pending</strong> for manual delivery.
+              </p>
+              {keyOverview ? (
+                <p className="mt-2 text-xs text-sky-700 dark:text-sky-300">
+                  Pool: {keyOverview.available} available · {keyOverview.assigned} assigned
+                  {keyOverview.awaitingKeys ? ` · ${keyOverview.awaitingKeys} paid order(s) awaiting keys` : ''}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={runAutoDeliver}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {loading ? <LoaderCircle className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+              Process waiting orders
+            </button>
+          </div>
+          <input
+            ref={keysInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain"
+            className="hidden"
+            onChange={handleKeysUpload}
+          />
+        </div>
+      ) : null}
+
+      {!isAdmin && !canEditPrices ? (
+        <p className="mt-3 text-sm text-amber-700">Price editing is disabled for your vendor account. Contact the platform admin to change pricing access.</p>
+      ) : null}
+
       <form onSubmit={submit} className="mt-6 grid gap-3 sm:grid-cols-2">
         {[
           ['name', 'Name'], ['slug', 'Slug'], ['category', 'Category'],
-          ['price', 'Price'], ['originalPrice', 'Original price'], ['stock', 'Stock'],
+          ...(canEditPrices ? [['price', 'Price'], ['originalPrice', 'Original price']] : []),
+          ['stock', 'Stock'],
           ['licenseType', 'License type'], ['rating', 'Rating'],
         ].map(([key, label]) => (
           <label key={key}>
@@ -182,12 +299,15 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+                disabled={uploading || !canUploadImages}
                 className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {uploading ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}
                 {uploading ? 'Uploading...' : 'Upload image'}
               </button>
+              {!canUploadImages && !isAdmin ? (
+                <p className="text-xs text-amber-700">Image upload permission is disabled for your account.</p>
+              ) : null}
               <p className="text-xs text-slate-500">JPEG, PNG, WebP, or GIF. Max 5MB.</p>
               <label>
                 <span className="mb-1 block text-xs font-medium">Or paste image URL</span>
@@ -216,18 +336,11 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
         </label>
 
-        <CountryRestrictionPicker
-          label="Allowed countries (optional)"
-          hint="Leave empty for worldwide. If set, product is only visible in selected countries."
-          selected={form.allowedCountries ?? []}
-          onChange={(allowedCountries) => setForm({ ...form, allowedCountries })}
-        />
-        <CountryRestrictionPicker
-          label="Blocked countries (optional)"
-          hint="Customers in these countries will not see this product."
-          selected={form.blockedCountries ?? []}
-          onChange={(blockedCountries) => setForm({ ...form, blockedCountries })}
-        />
+        {isAdmin ? (
+          <p className="sm:col-span-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-white/5">
+            Country visibility is managed on the <strong>Regions</strong> page.
+          </p>
+        ) : null}
 
         <div className="flex gap-2 sm:col-span-2">
           <button disabled={loading || uploading} className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
@@ -257,9 +370,29 @@ export default function ProductsTab({ isAdmin, emptyProductForm, formatMoney }) 
                   {p.vendorName ? ` • ${p.vendorName}` : ''}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
+                {isAdmin && p.licensePool ? (
+                  <p className={`mt-1 text-xs font-semibold ${p.licensePool.available > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    Keys: {p.licensePool.available} available · {p.licensePool.assigned} used
+                  </p>
+                ) : null}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => openKeysPicker(p.id)}
+                  disabled={keysUploadingId === p.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300"
+                >
+                  {keysUploadingId === p.id ? (
+                    <LoaderCircle className="animate-spin" size={14} />
+                  ) : (
+                    <FileSpreadsheet size={14} />
+                  )}
+                  Upload keys
+                </button>
+              ) : null}
               <button type="button" onClick={() => edit(p)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10">Edit</button>
               <button type="button" onClick={() => remove(p.id)} className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white">
                 <Trash2 size={14} className="inline" />

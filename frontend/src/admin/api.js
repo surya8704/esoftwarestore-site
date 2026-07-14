@@ -46,6 +46,23 @@ export async function uploadProductImage(file) {
   return data
 }
 
+export async function uploadProductLicenseKeys(productId, file) {
+  const token = localStorage.getItem('dashboardToken')
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_BASE}/api/admin/products/${productId}/license-keys/import`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+
+  const text = await response.text()
+  const data = text ? JSON.parse(text) : {}
+  if (!response.ok) throw new Error(data.message ?? data.error ?? 'License key import failed')
+  return data
+}
+
 export function formatMoney(amount, currency = 'INR') {
   const symbols = { INR: '₹', USD: '$', EUR: '€', GBP: '£' }
   const symbol = symbols[currency] ?? `${currency} `
@@ -75,6 +92,14 @@ export const emptyVendorForm = {
   email: '',
   commissionRate: 15,
   password: 'Vendor@123',
+  permissions: {
+    canManageProducts: true,
+    canEditPrices: true,
+    canViewOrders: true,
+    canViewLicenseKeys: true,
+    canManagePayouts: true,
+    canUploadImages: true,
+  },
 }
 
 export const emptyUserForm = {

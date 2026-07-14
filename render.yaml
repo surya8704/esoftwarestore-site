@@ -46,3 +46,9 @@ services:
         value: INR
       - key: DEFAULT_LOCALE
         value: en
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false

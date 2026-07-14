@@ -46,7 +46,7 @@ export async function seedDatabase() {
         isDefault: true,
       })
 
-      await seedLicensePool(product._id, 5)
+      await seedLicensePool(product._id, 0)
     }
   }
 

@@ -21,6 +21,9 @@ import { guideRoutes } from './routes/guides.js'
 import { uploadRoutes } from './routes/upload.js'
 import { vendorRoutes } from './routes/vendor.js'
 import { processAbandonedCartFollowUps } from './services/marketing.js'
+import { pageRoutes } from './routes/pages.js'
+import { ensureGuidesSeeded } from './lib/siteContent.js'
+import { announcementRoutes } from './routes/announcements.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, '..', 'uploads')
@@ -60,6 +63,8 @@ app.get('/health', async () => ({ ok: true, version: '2.0.0' }))
 await authRoutes(app)
 await productRoutes(app)
 await guideRoutes(app)
+await pageRoutes(app)
+await announcementRoutes(app)
 await vendorRoutes(app)
 await cartRoutes(app)
 await checkoutRoutes(app)
@@ -71,6 +76,7 @@ await uploadRoutes(app, { uploadsDir, apiPublicUrl: config.apiPublicUrl })
 
 try {
   await seedDatabase()
+  await ensureGuidesSeeded()
 } catch (error) {
   app.log.warn({ err: error }, 'Database seed skipped')
 }

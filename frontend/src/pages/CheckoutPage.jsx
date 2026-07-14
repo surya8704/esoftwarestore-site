@@ -7,6 +7,7 @@ import { submitPayuForm } from '../lib/payu'
 import { loadRazorpayCheckout, openRazorpayCheckout } from '../lib/razorpay'
 import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
+import SocialLoginButtons from '../components/SocialLoginButtons'
 
 const PAYMENT_METHODS = [
   { id: 'razorpay', label: 'Razorpay', hint: 'UPI, cards & wallets' },
@@ -26,7 +27,7 @@ function Field({ label, required, children, className = '' }) {
 }
 
 export default function CheckoutPage() {
-  const { cart, refreshCart, currency, country, removeFromCart, user, signup } = useApp()
+  const { cart, refreshCart, currency, country, removeFromCart, user, signup, loginWithGoogle, loginWithFacebook, config } = useApp()
   const [billing, setBilling] = useState(() => emptyBilling(country))
   const [removingId, setRemovingId] = useState(null)
   const [coupon, setCoupon] = useState('')
@@ -431,6 +432,33 @@ export default function CheckoutPage() {
 
             {!user ? (
               <div className="space-y-3 rounded-xl border border-store bg-store-subtle p-4">
+                <p className="text-sm font-semibold text-store-heading">Sign in faster</p>
+                <SocialLoginButtons
+                  config={config}
+                  disabled={loading}
+                  onGoogleCredential={async (idToken) => {
+                    setError('')
+                    setLoading(true)
+                    try {
+                      await loginWithGoogle(idToken)
+                    } catch (err) {
+                      setError(err.message || 'Google sign-in failed')
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                  onFacebookAccessToken={async (accessToken) => {
+                    setError('')
+                    setLoading(true)
+                    try {
+                      await loginWithFacebook(accessToken)
+                    } catch (err) {
+                      setError(err.message || 'Facebook sign-in failed')
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                />
                 <label className="flex items-center gap-3 text-sm font-medium text-store-heading">
                   <input
                     type="checkbox"
@@ -438,7 +466,7 @@ export default function CheckoutPage() {
                     onChange={(e) => setField('createAccount', e.target.checked)}
                     className="h-4 w-4 rounded border-store text-[#f97316] focus:ring-[#f97316]"
                   />
-                  Create an account?
+                  Create an account with email?
                 </label>
                 {billing.createAccount ? (
                   <Field label="Account password" required>

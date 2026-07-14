@@ -3,6 +3,7 @@ import { mapId } from '../db/client.js'
 import {
   ConfirmationCode,
   Coupon,
+  LicenseKey,
   Order,
   OrderItem,
   Product,
@@ -25,6 +26,31 @@ import { generateConfirmationCode, parseJsonList } from '../lib/utils.js'
 import { buildContactSummary } from '../lib/phone.js'
 import { hashPassword } from '../db/seed.js'
 import { normalizeProduct, productSchema, productWriteFields, vendorStats } from './vendor.js'
+import {
+  defaultVendorPermissions,
+  normalizeVendorPermissions,
+  VENDOR_PERMISSION_KEYS,
+} from '../lib/vendorPermissions.js'
+import {
+  countOrdersAwaitingKeys,
+  getLicensePoolStats,
+  getLicensePoolStatsForProducts,
+  importLicenseKeys,
+  parseLicenseKeysFromBuffer,
+  processPendingKeyDeliveries,
+} from '../services/license.js'
+import { buildEarningsReport } from '../services/reports.js'
+import {
+  createGuide,
+  deleteGuide,
+  getAdminGuide,
+  LEGAL_PAGE_KEYS,
+  listAdminGuides,
+  listAdminSitePages,
+  resetSitePage,
+  updateGuide,
+  updateSitePage,
+} from '../lib/siteContent.js'
 
 const ORDER_STATUSES = ['pending', 'processing', 'completed', 'on_hold', 'cancelled', 'refunded']
 
@@ -129,6 +155,22 @@ export async function adminRoutes(app) {
       pendingVendorPayouts: Number(pendingPayouts[0]?.total ?? 0),
       paidVendorPayouts: Number(paidPayouts[0]?.total ?? 0),
     }
+  })
+
+  app.get('/api/admin/reports/earnings', { preHandler: [app.requireAdmin] }, async (request) => {
+    const schema = z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      country: z.string().trim().max(3).optional(),
+      groupBy: z.enum(['day', 'week', 'month']).optional().default('day'),
+    })
+    const query = schema.parse(request.query ?? {})
+    return buildEarningsReport({
+      from: query.from || undefined,
+      to: query.to || undefined,
+      countryCode: query.country || 'ALL',
+      groupBy: query.groupBy || 'day',
+    })
   })
 
   app.get('/api/admin/users', { preHandler: [app.requireAdmin] }, async () => {
@@ -256,7 +298,11 @@ export async function adminRoutes(app) {
     const enriched = await Promise.all(
       list.map(async (vendor) => {
         const stats = await vendorStats(vendor._id.toString())
-        return { ...mapId(vendor), stats }
+        return {
+          ...mapId(vendor),
+          permissions: normalizeVendorPermissions(vendor.permissions),
+          stats,
+        }
       }),
     )
     return { vendors: enriched }
@@ -275,12 +321,16 @@ export async function adminRoutes(app) {
   })
 
   app.post('/api/admin/vendors', { preHandler: [app.requireAdmin] }, async (request) => {
+    const permissionShape = Object.fromEntries(
+      VENDOR_PERMISSION_KEYS.map((key) => [key, z.boolean().optional()]),
+    )
     const schema = z.object({
       name: z.string().min(2),
       slug: z.string().min(2),
       email: z.string().email(),
       commissionRate: z.number().int().min(0).max(50).default(15),
       password: z.string().min(6).optional(),
+      permissions: z.object(permissionShape).optional(),
     })
     const payload = schema.parse(request.body)
     const existing = await Vendor.findOne({ slug: payload.slug })
@@ -297,39 +347,58 @@ export async function adminRoutes(app) {
       userId = user._id
     }
 
+    const permissions = normalizeVendorPermissions({
+      ...defaultVendorPermissions(),
+      ...(payload.permissions ?? {}),
+    })
+
     const vendor = await Vendor.create({
       userId,
       name: payload.name,
       slug: payload.slug,
       email: payload.email,
       commissionRate: payload.commissionRate,
+      permissions,
     })
 
-    return { vendor: mapId(vendor) }
+    return { vendor: { ...mapId(vendor), permissions } }
   })
 
   app.put('/api/admin/vendors/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const permissionShape = Object.fromEntries(
+      VENDOR_PERMISSION_KEYS.map((key) => [key, z.boolean().optional()]),
+    )
     const schema = z.object({
-      name: z.string().min(2),
-      slug: z.string().min(2),
-      email: z.string().email(),
-      commissionRate: z.number().int().min(0).max(50),
-      active: z.boolean(),
+      name: z.string().min(2).optional(),
+      slug: z.string().min(2).optional(),
+      email: z.string().email().optional(),
+      commissionRate: z.number().int().min(0).max(50).optional(),
+      active: z.boolean().optional(),
+      permissions: z.object(permissionShape).optional(),
     })
     const payload = schema.parse(request.body)
-    const vendor = await Vendor.findByIdAndUpdate(
-      request.params.id,
-      {
-        name: payload.name,
-        slug: payload.slug,
-        email: payload.email,
-        commissionRate: payload.commissionRate,
-        active: payload.active,
-      },
-      { new: true },
-    )
+    const vendor = await Vendor.findById(request.params.id)
     if (!vendor) return reply.notFound('Vendor not found')
-    return { vendor: mapId(vendor) }
+
+    if (payload.name !== undefined) vendor.name = payload.name
+    if (payload.slug !== undefined) vendor.slug = payload.slug
+    if (payload.email !== undefined) vendor.email = payload.email
+    if (payload.commissionRate !== undefined) vendor.commissionRate = payload.commissionRate
+    if (payload.active !== undefined) vendor.active = payload.active
+    if (payload.permissions !== undefined) {
+      vendor.permissions = normalizeVendorPermissions({
+        ...normalizeVendorPermissions(vendor.permissions),
+        ...payload.permissions,
+      })
+    }
+    await vendor.save()
+
+    return {
+      vendor: {
+        ...mapId(vendor),
+        permissions: normalizeVendorPermissions(vendor.permissions),
+      },
+    }
   })
 
   app.patch('/api/admin/vendors/:id/payouts/:payoutId', { preHandler: [app.requireAdmin] }, async (request, reply) => {
@@ -362,12 +431,97 @@ export async function adminRoutes(app) {
 
   app.get('/api/admin/products', { preHandler: [app.requireAdmin] }, async () => {
     const result = await Product.find().sort({ createdAt: -1 }).populate('vendorId', 'name')
+    const ids = result.map((row) => row._id)
+    const poolStats = await getLicensePoolStatsForProducts(ids)
     return {
       products: result.map((row) => ({
         ...normalizeProduct(row),
         vendorId: row.vendorId?._id?.toString?.() ?? row.vendorId,
         vendorName: row.vendorId?.name,
+        licensePool: poolStats[String(row._id)] ?? { available: 0, assigned: 0, total: 0 },
       })),
+    }
+  })
+
+  app.get('/api/admin/license-keys/overview', { preHandler: [app.requireAdmin] }, async () => {
+    const awaitingKeys = await countOrdersAwaitingKeys()
+    const available = await LicenseKey.countDocuments({ status: 'available' })
+    const assigned = await LicenseKey.countDocuments({ status: 'assigned' })
+    return { awaitingKeys, available, assigned, total: available + assigned }
+  })
+
+  app.post('/api/admin/orders/auto-deliver-keys', { preHandler: [app.requireAdmin] }, async (request) => {
+    const limit = Math.min(200, Math.max(1, Number(request.body?.limit) || 50))
+    const result = await processPendingKeyDeliveries({ limit })
+    return {
+      ...result,
+      awaitingKeys: await countOrdersAwaitingKeys(),
+    }
+  })
+
+  app.get('/api/admin/products/:id/license-keys', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const product = await Product.findById(request.params.id)
+    if (!product) return reply.code(404).send({ message: 'Product not found' })
+    const stats = await getLicensePoolStats(product._id)
+    const recent = await LicenseKey.find({ productId: product._id })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .select('licenseKey status assignedAt createdAt orderId')
+    return {
+      productId: product._id.toString(),
+      productName: product.name,
+      stats,
+      recent: recent.map((row) => ({
+        id: row._id.toString(),
+        licenseKey: row.status === 'available' ? row.licenseKey : `${String(row.licenseKey).slice(0, 4)}••••`,
+        status: row.status,
+        assignedAt: row.assignedAt,
+        createdAt: row.createdAt,
+        orderId: row.orderId?.toString?.() ?? null,
+      })),
+    }
+  })
+
+  app.post('/api/admin/products/:id/license-keys/import', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const product = await Product.findById(request.params.id)
+    if (!product) return reply.code(404).send({ message: 'Product not found' })
+
+    const file = await request.file()
+    if (!file) throw app.httpErrors.badRequest('Upload an Excel (.xlsx/.xls) or CSV file of product keys')
+
+    const filename = file.filename || 'keys.xlsx'
+    const lower = filename.toLowerCase()
+    if (!/\.(xlsx|xls|csv|txt)$/.test(lower)) {
+      throw app.httpErrors.badRequest('Only .xlsx, .xls, .csv, or .txt key sheets are supported')
+    }
+
+    const chunks = []
+    for await (const chunk of file.file) chunks.push(chunk)
+    const buffer = Buffer.concat(chunks)
+    if (!buffer.length) throw app.httpErrors.badRequest('Uploaded file is empty')
+
+    let keys
+    try {
+      keys = parseLicenseKeysFromBuffer(buffer, filename)
+    } catch (err) {
+      throw app.httpErrors.badRequest(err.message || 'Could not read the key sheet')
+    }
+
+    if (!keys.length) {
+      throw app.httpErrors.badRequest('No product keys found in the file. Put keys in a column named key / license_key.')
+    }
+
+    const importResult = await importLicenseKeys(product._id, keys)
+    const delivery = await processPendingKeyDeliveries({ limit: 100 })
+
+    return {
+      productId: product._id.toString(),
+      productName: product.name,
+      filename,
+      parsed: keys.length,
+      ...importResult,
+      autoDelivery: delivery,
+      awaitingKeys: await countOrdersAwaitingKeys(),
     }
   })
 
@@ -391,6 +545,25 @@ export async function adminRoutes(app) {
       {
         ...productWriteFields(payload),
         vendorId: payload.vendorId ?? null,
+      },
+      { new: true },
+    )
+    if (!product) return reply.notFound('Product not found')
+    return { product: normalizeProduct(product) }
+  })
+
+  app.patch('/api/admin/products/:id/regions', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const schema = z.object({
+      allowedCountries: z.array(z.string().trim().toUpperCase().length(2)).default([]),
+      blockedCountries: z.array(z.string().trim().toUpperCase().length(2)).default([]),
+    })
+    const payload = schema.parse(request.body ?? {})
+    const encode = (list) => (list?.length ? JSON.stringify(list) : null)
+    const product = await Product.findByIdAndUpdate(
+      request.params.id,
+      {
+        allowedCountries: encode(payload.allowedCountries),
+        blockedCountries: encode(payload.blockedCountries),
       },
       { new: true },
     )
@@ -881,6 +1054,114 @@ export async function adminRoutes(app) {
   app.delete('/api/admin/coupons/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
     const coupon = await Coupon.findByIdAndDelete(request.params.id)
     if (!coupon) return reply.code(404).send({ message: 'Coupon not found' })
+    return { ok: true }
+  })
+
+  app.get('/api/admin/pages', { preHandler: [app.requireAdmin] }, async () => {
+    const pages = await listAdminSitePages()
+    return { pages }
+  })
+
+  app.get('/api/admin/pages/:key', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const key = request.params.key
+    if (!LEGAL_PAGE_KEYS.includes(key)) return reply.code(404).send({ message: 'Page not found' })
+    const pages = await listAdminSitePages()
+    const page = pages.find((p) => p.key === key)
+    if (!page) return reply.code(404).send({ message: 'Page not found' })
+    return { page }
+  })
+
+  app.put('/api/admin/pages/:key', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const key = request.params.key
+    if (!LEGAL_PAGE_KEYS.includes(key)) return reply.code(404).send({ message: 'Page not found' })
+    const schema = z.object({
+      title: z.string().trim().min(1).max(200).optional(),
+      description: z.string().trim().max(500).optional(),
+      updatedLabel: z.string().trim().max(80).optional(),
+      sections: z
+        .array(
+          z.object({
+            title: z.string().trim().min(1).max(200),
+            paragraphs: z.array(z.string()).default([]),
+            list: z.array(z.string()).default([]),
+            links: z
+              .array(z.object({ label: z.string().trim().min(1), to: z.string().trim().min(1) }))
+              .default([]),
+          }),
+        )
+        .optional(),
+    })
+    const payload = schema.parse(request.body ?? {})
+    const page = await updateSitePage(key, payload)
+    return { page }
+  })
+
+  app.post('/api/admin/pages/:key/reset', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const key = request.params.key
+    if (!LEGAL_PAGE_KEYS.includes(key)) return reply.code(404).send({ message: 'Page not found' })
+    const page = await resetSitePage(key)
+    return { page }
+  })
+
+  app.get('/api/admin/guides', { preHandler: [app.requireAdmin] }, async () => {
+    const guides = await listAdminGuides()
+    return { guides }
+  })
+
+  app.get('/api/admin/guides/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const guide = await getAdminGuide(request.params.id)
+    if (!guide) return reply.code(404).send({ message: 'Guide not found' })
+    return { guide }
+  })
+
+  app.post('/api/admin/guides', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const schema = z.object({
+      title: z.string().trim().min(1).max(300),
+      slug: z.string().trim().max(160).optional(),
+      excerpt: z.string().max(1000).optional(),
+      contentHtml: z.string().optional(),
+      imageUrl: z.string().max(800).optional(),
+      sourceUrl: z.string().max(500).optional(),
+      categories: z.union([z.string(), z.array(z.string())]).optional(),
+      publishedAt: z.string().optional().nullable(),
+      active: z.boolean().optional(),
+    })
+    try {
+      const payload = schema.parse(request.body ?? {})
+      const guide = await createGuide(payload)
+      return reply.code(201).send({ guide })
+    } catch (err) {
+      if (err?.name === 'ZodError') throw err
+      return reply.code(400).send({ message: err.message || 'Could not create guide' })
+    }
+  })
+
+  app.put('/api/admin/guides/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const schema = z.object({
+      title: z.string().trim().min(1).max(300).optional(),
+      slug: z.string().trim().max(160).optional(),
+      excerpt: z.string().max(1000).optional(),
+      contentHtml: z.string().optional(),
+      imageUrl: z.string().max(800).optional(),
+      sourceUrl: z.string().max(500).optional(),
+      categories: z.union([z.string(), z.array(z.string())]).optional(),
+      publishedAt: z.string().optional().nullable(),
+      active: z.boolean().optional(),
+    })
+    try {
+      const payload = schema.parse(request.body ?? {})
+      const guide = await updateGuide(request.params.id, payload)
+      if (!guide) return reply.code(404).send({ message: 'Guide not found' })
+      return { guide }
+    } catch (err) {
+      if (err?.name === 'ZodError') throw err
+      return reply.code(400).send({ message: err.message || 'Could not update guide' })
+    }
+  })
+
+  app.delete('/api/admin/guides/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const ok = await deleteGuide(request.params.id)
+    if (!ok) return reply.code(404).send({ message: 'Guide not found' })
     return { ok: true }
   })
 }

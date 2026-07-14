@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema({
   affiliateCode: { type: String, maxlength: 40 },
   referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   socialProvider: { type: String, maxlength: 40 },
-  googleId: { type: String, maxlength: 120 },
+  googleId: { type: String, maxlength: 120, sparse: true, unique: true },
+  facebookId: { type: String, maxlength: 120, sparse: true, unique: true },
   createdAt: { type: Date, default: Date.now, required: true }
 })
 
@@ -23,6 +24,14 @@ const vendorSchema = new mongoose.Schema({
   email: { type: String, required: true, maxlength: 180 },
   commissionRate: { type: Number, required: true, default: 15 },
   active: { type: Boolean, required: true, default: true },
+  permissions: {
+    canManageProducts: { type: Boolean, default: true },
+    canEditPrices: { type: Boolean, default: true },
+    canViewOrders: { type: Boolean, default: true },
+    canViewLicenseKeys: { type: Boolean, default: true },
+    canManagePayouts: { type: Boolean, default: true },
+    canUploadImages: { type: Boolean, default: true },
+  },
   createdAt: { type: Date, default: Date.now, required: true }
 })
 
@@ -282,6 +291,59 @@ const orderNoteSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now, required: true }
 })
 
+const sitePageSectionSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, maxlength: 200 },
+    paragraphs: [{ type: String }],
+    list: [{ type: String }],
+    links: [
+      {
+        label: { type: String, maxlength: 120 },
+        to: { type: String, maxlength: 300 },
+      },
+    ],
+  },
+  { _id: false },
+)
+
+const sitePageSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true, maxlength: 60 },
+  title: { type: String, required: true, maxlength: 200 },
+  description: { type: String, maxlength: 500, default: '' },
+  updatedLabel: { type: String, maxlength: 80, default: '' },
+  sections: { type: [sitePageSectionSchema], default: [] },
+  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+})
+
+const guideSchema = new mongoose.Schema({
+  externalId: { type: String, maxlength: 60 },
+  slug: { type: String, required: true, unique: true, maxlength: 160 },
+  title: { type: String, required: true, maxlength: 300 },
+  excerpt: { type: String, maxlength: 1000, default: '' },
+  contentHtml: { type: String, default: '' },
+  publishedAt: { type: Date, default: Date.now },
+  modifiedAt: { type: Date, default: Date.now },
+  imageUrl: { type: String, maxlength: 800, default: '' },
+  categories: [{ type: String, maxlength: 80 }],
+  categorySlugs: [{ type: String, maxlength: 80 }],
+  sourceUrl: { type: String, maxlength: 500, default: '' },
+  active: { type: Boolean, required: true, default: true },
+})
+
+const announcementSchema = new mongoose.Schema({
+  title: { type: String, required: true, maxlength: 160 },
+  message: { type: String, required: true, maxlength: 400 },
+  linkUrl: { type: String, maxlength: 500, default: '' },
+  linkLabel: { type: String, maxlength: 80, default: '' },
+  active: { type: Boolean, required: true, default: true },
+  pinned: { type: Boolean, required: true, default: false },
+  startsAt: { type: Date, default: null },
+  endsAt: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now, required: true },
+  updatedAt: { type: Date, default: Date.now },
+})
+
 export const User = mongoose.model('User', userSchema)
 export const Vendor = mongoose.model('Vendor', vendorSchema)
 export const VendorPayout = mongoose.model('VendorPayout', vendorPayoutSchema)
@@ -303,4 +365,7 @@ export const EmailLog = mongoose.model('EmailLog', emailLogSchema)
 export const SupportVideo = mongoose.model('SupportVideo', supportVideoSchema)
 export const ConfirmationCode = mongoose.model('ConfirmationCode', confirmationCodeSchema)
 export const OrderNote = mongoose.model('OrderNote', orderNoteSchema)
+export const SitePage = mongoose.model('SitePage', sitePageSchema)
+export const Guide = mongoose.model('Guide', guideSchema)
+export const Announcement = mongoose.model('Announcement', announcementSchema)
 

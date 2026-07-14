@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
+  BookOpen,
   Building2,
+  ChartColumn,
+  FileText,
+  Globe2,
   LayoutDashboard,
   LoaderCircle,
   LockKeyhole,
   LogOut,
+  Megaphone,
   Package,
   Receipt,
   ShoppingBag,
@@ -23,29 +28,41 @@ import PayoutsTab from './tabs/PayoutsTab'
 import UsersTab from './tabs/UsersTab'
 import CustomersTab from './tabs/CustomersTab'
 import CouponsTab from './tabs/CouponsTab'
+import PagesTab from './tabs/PagesTab'
+import GuidesTab from './tabs/GuidesTab'
+import ReportsTab from './tabs/ReportsTab'
+import RegionsTab from './tabs/RegionsTab'
+import AnnouncementsTab from './tabs/AnnouncementsTab'
 import ThemeToggle from '../components/ThemeToggle'
+import { defaultVendorPermissions, normalizeVendorPermissions } from './vendorAccess'
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'reports', label: 'Reports', icon: ChartColumn },
   { id: 'vendors', label: 'Vendors', icon: Building2 },
   { id: 'products', label: 'Products', icon: Package },
+  { id: 'regions', label: 'Regions', icon: Globe2 },
+  { id: 'announcements', label: 'Announcements', icon: Megaphone },
   { id: 'orders', label: 'Orders', icon: ShoppingBag },
   { id: 'customers', label: 'Customers', icon: UserCircle },
   { id: 'coupons', label: 'Coupons', icon: TicketPercent },
+  { id: 'pages', label: 'Pages', icon: FileText },
+  { id: 'guides', label: 'Guides', icon: BookOpen },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'users', label: 'Users', icon: Users },
 ]
 
 const VENDOR_TABS = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'products', label: 'My Products', icon: Package },
-  { id: 'orders', label: 'My Orders', icon: Receipt },
-  { id: 'payouts', label: 'Payouts', icon: Wallet },
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, permission: null },
+  { id: 'products', label: 'My Products', icon: Package, permission: 'canManageProducts' },
+  { id: 'orders', label: 'My Orders', icon: Receipt, permission: 'canViewOrders' },
+  { id: 'payouts', label: 'Payouts', icon: Wallet, permission: 'canManagePayouts' },
 ]
 
 export default function AdminDashboard() {
   const [token, setToken] = useState(() => localStorage.getItem('dashboardToken') ?? '')
   const [user, setUser] = useState(null)
+  const [vendorPermissions, setVendorPermissions] = useState(() => defaultVendorPermissions())
   const [tab, setTab] = useState('overview')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -53,7 +70,9 @@ export default function AdminDashboard() {
 
   const isAdmin = user?.role === 'admin'
   const isVendor = user?.role === 'vendor'
-  const tabs = isAdmin ? ADMIN_TABS : VENDOR_TABS
+  const tabs = isAdmin
+    ? ADMIN_TABS
+    : VENDOR_TABS.filter((item) => !item.permission || vendorPermissions[item.permission])
 
   useEffect(() => {
     if (!token) return
@@ -75,6 +94,31 @@ export default function AdminDashboard() {
       })
     return () => { cancelled = true }
   }, [token])
+
+  useEffect(() => {
+    if (!token || !isVendor) {
+      setVendorPermissions(defaultVendorPermissions())
+      return undefined
+    }
+    let cancelled = false
+    dashboardApi('/api/vendor/me')
+      .then((data) => {
+        if (cancelled) return
+        setVendorPermissions(normalizeVendorPermissions(data.permissions ?? data.vendor?.permissions))
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setStatus(err.message || 'Could not load vendor access')
+      })
+    return () => { cancelled = true }
+  }, [token, isVendor])
+
+  useEffect(() => {
+    if (!isVendor) return
+    if (!tabs.some((item) => item.id === tab)) {
+      setTab('overview')
+    }
+  }, [isVendor, tabs, tab])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -189,12 +233,28 @@ export default function AdminDashboard() {
 
         <div className="min-w-0 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/5 sm:p-8">
           {tab === 'overview' ? <OverviewTab isAdmin={isAdmin} formatMoney={formatMoney} onNavigate={setTab} /> : null}
+          {tab === 'reports' && isAdmin ? <ReportsTab /> : null}
           {tab === 'vendors' && isAdmin ? <VendorsTab emptyVendorForm={emptyVendorForm} formatMoney={formatMoney} /> : null}
-          {tab === 'products' ? <ProductsTab isAdmin={isAdmin} emptyProductForm={emptyProductForm} formatMoney={formatMoney} /> : null}
-          {tab === 'orders' ? <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
+          {tab === 'products' ? (
+            <ProductsTab
+              isAdmin={isAdmin}
+              emptyProductForm={emptyProductForm}
+              formatMoney={formatMoney}
+              vendorPermissions={vendorPermissions}
+            />
+          ) : null}
+          {tab === 'regions' && isAdmin ? <RegionsTab /> : null}
+          {tab === 'announcements' && isAdmin ? <AnnouncementsTab /> : null}
+          {tab === 'orders' ? (
+            <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} vendorPermissions={vendorPermissions} />
+          ) : null}
           {tab === 'customers' && isAdmin ? <CustomersTab formatMoney={formatMoney} /> : null}
           {tab === 'coupons' && isAdmin ? <CouponsTab /> : null}
-          {tab === 'payouts' ? <PayoutsTab isAdmin={isAdmin} formatMoney={formatMoney} /> : null}
+          {tab === 'pages' && isAdmin ? <PagesTab /> : null}
+          {tab === 'guides' && isAdmin ? <GuidesTab /> : null}
+          {tab === 'payouts' ? (
+            <PayoutsTab isAdmin={isAdmin} formatMoney={formatMoney} vendorPermissions={vendorPermissions} />
+          ) : null}
           {tab === 'users' && isAdmin ? <UsersTab currentUserId={user.id} /> : null}
         </div>
       </div>

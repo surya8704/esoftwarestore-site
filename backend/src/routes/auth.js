@@ -1,7 +1,10 @@
 import crypto from 'node:crypto'
+import { z } from 'zod'
 import { config } from '../config.js'
 import { Affiliate, User } from '../db/models.js'
 import { hashPassword } from '../db/seed.js'
+import { verifyGoogleIdToken } from '../lib/googleAuth.js'
+import { verifyFacebookAccessToken } from '../lib/facebookAuth.js'
 
 function normalizeEmail(email) {
   return String(email ?? '').trim().toLowerCase()
@@ -17,10 +20,20 @@ function userPayload(user) {
     affiliateCode: user.affiliateCode,
     countryCode: user.countryCode,
     locale: user.locale,
+    socialProvider: user.socialProvider ?? null,
   }
 }
 
-async function createCustomerWithAffiliate({ name, email, passwordHash, countryCode, locale, socialProvider }) {
+async function createCustomerWithAffiliate({
+  name,
+  email,
+  passwordHash,
+  countryCode,
+  locale,
+  socialProvider,
+  googleId,
+  facebookId,
+}) {
   const affiliateCode = `REF${Date.now().toString(36).slice(-6).toUpperCase()}`
   const user = await User.create({
     name: name.trim(),
@@ -31,8 +44,57 @@ async function createCustomerWithAffiliate({ name, email, passwordHash, countryC
     locale: locale ?? 'en',
     affiliateCode,
     socialProvider,
+    googleId,
+    facebookId,
   })
   await Affiliate.create({ userId: user._id, code: affiliateCode })
+  return user
+}
+
+async function signInResponse(reply, user) {
+  const token = await reply.jwtSign(
+    { sub: user._id.toString(), email: user.email, role: user.role },
+    { expiresIn: '30d' },
+  )
+  return { token, user: userPayload(user) }
+}
+
+async function findOrLinkSocialUser({
+  provider,
+  profileIdField,
+  profileId,
+  email,
+  name,
+  countryCode,
+  locale,
+}) {
+  let user =
+    (await User.findOne({ [profileIdField]: profileId })) ||
+    (await User.findOne({ email }))
+
+  if (!user) {
+    user = await createCustomerWithAffiliate({
+      name,
+      email,
+      passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')),
+      countryCode: countryCode ?? config.defaultCountry,
+      locale: locale ?? config.defaultLocale,
+      socialProvider: provider,
+      [profileIdField]: profileId,
+    })
+    return user
+  }
+
+  let dirty = false
+  if (!user[profileIdField]) {
+    user[profileIdField] = profileId
+    dirty = true
+  }
+  if (!user.socialProvider) {
+    user.socialProvider = provider
+    dirty = true
+  }
+  if (dirty) await user.save()
   return user
 }
 
@@ -58,11 +120,7 @@ export async function authRoutes(app) {
       locale,
     })
 
-    const token = await reply.jwtSign(
-      { sub: user._id.toString(), email: user.email, role: user.role },
-      { expiresIn: '30d' },
-    )
-    return { token, user: userPayload(user) }
+    return signInResponse(reply, user)
   })
 
   app.post('/api/auth/login', async (request, reply) => {
@@ -77,11 +135,7 @@ export async function authRoutes(app) {
       throw app.httpErrors.unauthorized('Incorrect email or password')
     }
 
-    const token = await reply.jwtSign(
-      { sub: user._id.toString(), email: user.email, role: user.role },
-      { expiresIn: '30d' },
-    )
-    return { token, user: userPayload(user) }
+    return signInResponse(reply, user)
   })
 
   app.post('/api/auth/magic-link', async (request) => {
@@ -94,36 +148,61 @@ export async function authRoutes(app) {
   })
 
   app.post('/api/auth/social', async (request, reply) => {
-    const { provider, email, name } = request.body ?? {}
-    const normalizedEmail = normalizeEmail(email)
-    if (!normalizedEmail || !name?.trim()) {
-      throw app.httpErrors.badRequest('Name and email are required')
-    }
+    const schema = z.object({
+      provider: z.enum(['google', 'facebook']),
+      idToken: z.string().min(20).optional(),
+      accessToken: z.string().min(20).optional(),
+      countryCode: z.string().length(2).optional(),
+      locale: z.string().max(10).optional(),
+    })
+    const payload = schema.parse(request.body)
 
-    let user = await User.findOne({ email: normalizedEmail })
-    if (!user) {
-      user = await User.create({
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash: hashPassword(crypto.randomBytes(16).toString('hex')),
-        role: 'customer',
-        socialProvider: provider,
-        affiliateCode: `SOC${Date.now().toString(36).slice(-6).toUpperCase()}`,
-      })
-    }
+    try {
+      if (payload.provider === 'google') {
+        if (!config.googleClientId) {
+          throw app.httpErrors.badRequest('Google login is not configured. Set GOOGLE_CLIENT_ID on the server.')
+        }
+        if (!payload.idToken) throw app.httpErrors.badRequest('Google idToken is required')
 
-    const token = await reply.jwtSign(
-      { sub: user._id.toString(), email: user.email, role: user.role },
-      { expiresIn: '30d' },
-    )
-    return {
-      token,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
+        const profile = await verifyGoogleIdToken(payload.idToken, config.googleClientId)
+        const user = await findOrLinkSocialUser({
+          provider: 'google',
+          profileIdField: 'googleId',
+          profileId: profile.googleId,
+          email: profile.email,
+          name: profile.name,
+          countryCode: payload.countryCode,
+          locale: payload.locale,
+        })
+        return signInResponse(reply, user)
+      }
+
+      if (payload.provider === 'facebook') {
+        if (!config.facebookAppId || !config.facebookAppSecret) {
+          throw app.httpErrors.badRequest('Facebook login is not configured. Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET.')
+        }
+        if (!payload.accessToken) throw app.httpErrors.badRequest('Facebook accessToken is required')
+
+        const profile = await verifyFacebookAccessToken(payload.accessToken, {
+          appId: config.facebookAppId,
+          appSecret: config.facebookAppSecret,
+        })
+        const user = await findOrLinkSocialUser({
+          provider: 'facebook',
+          profileIdField: 'facebookId',
+          profileId: profile.facebookId,
+          email: profile.email,
+          name: profile.name,
+          countryCode: payload.countryCode,
+          locale: payload.locale,
+        })
+        return signInResponse(reply, user)
+      }
+
+      throw app.httpErrors.badRequest('Unsupported social provider')
+    } catch (err) {
+      if (err.statusCode) throw err
+      throw app.httpErrors.unauthorized(err.message || 'Social sign-in failed')
     }
   })
 

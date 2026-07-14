@@ -3,6 +3,8 @@ import { createWriteStream } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { Vendor } from '../db/models.js'
+import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
@@ -18,6 +20,17 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
   await fs.mkdir(productsDir, { recursive: true })
 
   app.post('/api/upload/product-image', { preHandler: [app.requireStaff] }, async (request) => {
+    if (request.user.role === 'vendor') {
+      const vendor = await Vendor.findOne({ userId: request.user.sub })
+      if (!vendor || !vendor.active) {
+        throw app.httpErrors.forbidden('Vendor account is inactive or missing')
+      }
+      const permissions = normalizeVendorPermissions(vendor.permissions)
+      if (!vendorHasPermission(permissions, 'canUploadImages')) {
+        throw app.httpErrors.forbidden('You do not have permission to upload images')
+      }
+    }
+
     const file = await request.file()
     if (!file) throw app.httpErrors.badRequest('No image file provided')
     if (!ALLOWED_TYPES.has(file.mimetype)) {
@@ -32,6 +45,7 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
     const imageUrl = `${apiPublicUrl}/uploads/products/${filename}`
     return { imageUrl, filename }
   })
+
 
   app.get('/api/media/product-cover', async (request, reply) => {
     const { buildProductCoverSvg } = await import('../lib/productImages.js')
