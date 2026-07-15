@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ShoppingBag, Trash2, X } from 'lucide-react'
+import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { formatPrice } from '../lib/api'
 import ProductImage from './ProductImage'
 
-export default function CartDrawer({ open, onClose, cart, currency, onRemove }) {
+export default function CartDrawer({ open, onClose, cart, currency, onRemove, onUpdateQuantity }) {
   const [removingId, setRemovingId] = useState(null)
+  const [updatingId, setUpdatingId] = useState(null)
 
   if (!open) return null
 
@@ -19,6 +20,17 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove }) 
       await onRemove(itemId)
     } finally {
       setRemovingId(null)
+    }
+  }
+
+  const handleQty = async (itemId, nextQty) => {
+    if (!onUpdateQuantity) return
+    const qty = Math.max(1, Math.min(9999, Math.floor(Number(nextQty) || 1)))
+    setUpdatingId(itemId)
+    try {
+      await onUpdateQuantity(itemId, qty)
+    } finally {
+      setUpdatingId(null)
     }
   }
 
@@ -63,17 +75,49 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove }) 
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold leading-snug text-store-heading">{item.product?.name}</p>
                     <p className="mt-1 text-sm font-bold text-[#f97316]">
-                      {formatPrice(item.lineTotal, currency)} × {item.quantity}
+                      {formatPrice(item.unitPrice, currency)}
+                      <span className="font-medium text-store-muted"> / unit</span>
+                      {item.volumeDiscountPercent ? (
+                        <span className="ml-2 text-xs font-semibold text-[#059669]">-{item.volumeDiscountPercent}%</span>
+                      ) : null}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(item.id)}
-                      disabled={removingId === item.id}
-                      className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-store-muted hover:bg-[#fee2e2] hover:text-[#e11d48] disabled:opacity-50 transition-colors dark:hover:bg-[#450a0a]"
-                    >
-                      <Trash2 size={12} />
-                      {removingId === item.id ? 'Removing...' : 'Remove'}
-                    </button>
+                    {item.volumeDiscountPercent && item.listUnitPrice > item.unitPrice ? (
+                      <p className="text-xs text-store-muted line-through">{formatPrice(item.listUnitPrice, currency)} each</p>
+                    ) : null}
+                    <p className="mt-0.5 text-xs text-store-muted">Line total {formatPrice(item.lineTotal, currency)}</p>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center overflow-hidden rounded-full border border-store">
+                        <button
+                          type="button"
+                          disabled={updatingId === item.id || item.quantity <= 1}
+                          onClick={() => handleQty(item.id, item.quantity - 1)}
+                          className="px-2 py-1 text-store-heading disabled:opacity-40"
+                          aria-label="Decrease quantity"
+                        >
+                          <Minus size={12} />
+                        </button>
+                        <span className="min-w-[2rem] px-1 text-center text-xs font-semibold">{item.quantity}</span>
+                        <button
+                          type="button"
+                          disabled={updatingId === item.id}
+                          onClick={() => handleQty(item.id, item.quantity + 1)}
+                          className="px-2 py-1 text-store-heading disabled:opacity-40"
+                          aria-label="Increase quantity"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(item.id)}
+                        disabled={removingId === item.id}
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-store-muted hover:bg-[#fee2e2] hover:text-[#e11d48] disabled:opacity-50 transition-colors dark:hover:bg-[#450a0a]"
+                      >
+                        <Trash2 size={12} />
+                        {removingId === item.id ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
                   </div>
                 </li>
               ))}
@@ -83,6 +127,9 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove }) 
 
         {items.length > 0 ? (
           <div className="cart-drawer-footer border-t border-store bg-store-subtle px-6 py-5">
+            <p className="mb-3 text-xs text-store-muted">
+              Volume discounts apply automatically at 5+, 25+, and 100+ units.
+            </p>
             <div className="mb-4 flex justify-between text-base">
               <span className="font-medium text-store-muted">Subtotal</span>
               <span className="font-extrabold text-[#f97316]">{formatPrice(total, currency)}</span>

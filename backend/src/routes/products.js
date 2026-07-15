@@ -1,7 +1,7 @@
 import { mapId } from '../db/client.js'
 import { Product, ProductReview, ProductVariant, SupportVideo } from '../db/models.js'
 import { isProductVisible } from '../lib/utils.js'
-import { createPricingContext, resolveProductPriceFromContext } from '../services/pricing.js'
+import { createPricingContext, resolveProductPriceFromContext, publicVolumeTiers } from '../services/pricing.js'
 import { detectRegion, getRegionForCountry, COUNTRY_REGION } from '../services/geo.js'
 import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES } from '../config.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
@@ -63,6 +63,7 @@ export async function productRoutes(app) {
     googleLoginEnabled: Boolean(config.googleClientId),
     facebookAppId: config.facebookAppId || null,
     facebookLoginEnabled: Boolean(config.facebookAppId && config.facebookAppSecret),
+    volumeDiscountTiers: publicVolumeTiers(),
   }))
 
   app.get('/api/geo', async (request) => detectRegion(request))

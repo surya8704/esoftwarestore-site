@@ -227,6 +227,15 @@ export function AppProvider({ children }) {
     await refreshCart()
   }, [refreshCart])
 
+  const updateCartItemQuantity = useCallback(async (itemId, quantity) => {
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1))
+    await api(`/api/cart/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity: qty }),
+    })
+    await refreshCart()
+  }, [refreshCart])
+
   const value = useMemo(
     () => ({
       user,
@@ -247,11 +256,13 @@ export function AppProvider({ children }) {
       logout,
       addToCart,
       removeFromCart,
+      updateCartItemQuantity,
       refreshCart,
     }),
     [
       user, authReady, config, cart, country, currency, locale,
-      theme, setTheme, toggleTheme, refreshCart, removeFromCart, login, loginWithGoogle, loginWithFacebook, loginWithSocial, signup, logout,
+      theme, setTheme, toggleTheme, refreshCart, removeFromCart, updateCartItemQuantity,
+      login, loginWithGoogle, loginWithFacebook, loginWithSocial, signup, logout,
     ],
   )
 

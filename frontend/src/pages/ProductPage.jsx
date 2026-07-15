@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Heart, Package, ShoppingCart, ZoomIn } from 'lucide-react'
 import { api, formatPrice, trackPage, discountPercent, soldRecentlyCount, formatSoldRecently } from '../lib/api'
 import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_URL } from '../lib/contact'
 import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/products'
 import { getSimilarProducts } from '../lib/similarProducts'
+import { VOLUME_DISCOUNT_TIERS, priceWithVolumeDiscount, activeVolumeTierMinQty } from '../lib/volumeTiers'
 import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
@@ -28,13 +29,14 @@ function defaultVariantId(product) {
 export default function ProductPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { addToCart, currency, country, locale } = useApp()
+  const { addToCart, currency, country, locale, config } = useApp()
   const [data, setData] = useState(() => {
     const product = findProductBySlug(slug)
     return product ? { product, videos: [] } : null
   })
   const [allProducts, setAllProducts] = useState(() => getInstantProducts())
   const [variantId, setVariantId] = useState(() => defaultVariantId(findProductBySlug(slug)))
+  const [quantity, setQuantity] = useState(1)
   const [tab, setTab] = useState('description')
   const [zoomed, setZoomed] = useState(false)
 
@@ -45,6 +47,7 @@ export default function ProductPage() {
       setData({ product: cached, videos: [] })
       setVariantId(defaultVariantId(cached))
     }
+    setQuantity(1)
 
     let cancelled = false
     loadProducts({ country, currency, locale }, (products) => {
@@ -77,7 +80,13 @@ export default function ProductPage() {
 
   const { product } = data
   const selected = product.variants?.find((v) => v.id === variantId)
-  const price = selected?.price ?? product.displayPrice ?? product.price
+  const basePrice = selected?.price ?? product.displayPrice ?? product.price
+  const volumeTiers = config?.volumeDiscountTiers?.length ? config.volumeDiscountTiers : VOLUME_DISCOUNT_TIERS
+  const volumePricing = useMemo(
+    () => priceWithVolumeDiscount(basePrice, quantity, volumeTiers),
+    [basePrice, quantity, volumeTiers],
+  )
+  const price = volumePricing.unitPrice
   const discount = discountPercent(price, product.originalPrice)
   const currentIndex = allProducts.findIndex((p) => p.slug === slug)
   const prevProduct = currentIndex > 0 ? allProducts[currentIndex - 1] : null
@@ -85,8 +94,12 @@ export default function ProductPage() {
   const related = getSimilarProducts(product, allProducts, { limit: 8 })
 
   const buyNow = async () => {
-    await addToCart(product.id, variantId)
+    await addToCart(product.id, variantId, quantity)
     navigate('/checkout')
+  }
+
+  const addWithQty = async () => {
+    await addToCart(product.id, variantId, quantity)
   }
 
   const watchers = 20 + (soldRecentlyCount(product) % 80)
@@ -194,10 +207,18 @@ export default function ProductPage() {
             {!product.hidePrice ? (
               <div className="mt-4 flex flex-wrap items-baseline gap-3">
                 <p className="text-3xl font-extrabold text-[#f97316]">{formatPrice(price, product.currency ?? currency)}</p>
-                {product.originalPrice && product.originalPrice > price ? (
+                {volumePricing.volumeDiscountPercent > 0 ? (
+                  <p className="text-lg text-store-muted line-through">
+                    {formatPrice(volumePricing.listUnitPrice, product.currency ?? currency)}
+                  </p>
+                ) : product.originalPrice && product.originalPrice > price ? (
                   <p className="text-lg text-store-muted line-through">{formatPrice(product.originalPrice, product.currency ?? currency)}</p>
                 ) : null}
-                {discount > 0 ? (
+                {volumePricing.volumeDiscountPercent > 0 ? (
+                  <span className="rounded-full bg-[#ecfdf5] px-2.5 py-0.5 text-xs font-bold text-[#059669]">
+                    -{volumePricing.volumeDiscountPercent}% volume
+                  </span>
+                ) : discount > 0 ? (
                   <span className="rounded-full bg-[#fee2e2] px-2.5 py-0.5 text-xs font-bold text-[#e11d48]">-{discount}% OFF</span>
                 ) : null}
               </div>
@@ -229,9 +250,71 @@ export default function ProductPage() {
               </div>
             ) : null}
 
+            <div className="mt-6">
+              <p className="mb-2 text-sm font-semibold text-store-heading">Quantity</p>
+              <div className="inline-flex items-center overflow-hidden rounded-full border border-store">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  className="px-3 py-2 text-store-heading hover:bg-store-hover"
+                  aria-label="Decrease quantity"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={9999}
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
+                  className="w-16 border-x border-store bg-transparent py-2 text-center text-sm font-semibold outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.min(9999, q + 1))}
+                  className="px-3 py-2 text-store-heading hover:bg-store-hover"
+                  aria-label="Increase quantity"
+                >
+                  +
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-store-muted">
+                Line total {formatPrice(price * quantity, product.currency ?? currency)}
+                {volumePricing.volumeDiscountPercent
+                  ? ` · ${volumePricing.volumeDiscountPercent}% volume discount applied`
+                  : null}
+              </p>
+            </div>
+
+            {!product.hidePrice ? (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-store">
+                <div className="bg-store-subtle px-4 py-2 text-xs font-bold uppercase tracking-wide text-store-muted">
+                  Volume pricing (auto-applied)
+                </div>
+                <ul className="divide-y divide-[var(--store-border)] text-sm">
+                  {volumeTiers.map((tier) => {
+                    const active = activeVolumeTierMinQty(quantity, volumeTiers) === tier.minQty
+                    const tierPrice = priceWithVolumeDiscount(basePrice, tier.minQty, volumeTiers).unitPrice
+                    return (
+                      <li
+                        key={tier.minQty}
+                        className={`flex items-center justify-between gap-3 px-4 py-2.5 ${active ? 'bg-store-primary-muted/50 font-semibold text-[#ea580c]' : 'text-store-body'}`}
+                      >
+                        <span>{tier.label}</span>
+                        <span>
+                          {tier.discountPercent ? `−${tier.discountPercent}% · ` : ''}
+                          {formatPrice(tierPrice, product.currency ?? currency)}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="mt-8 hidden flex-wrap gap-3 lg:flex">
               {!product.hideCart ? (
-                <button type="button" onClick={() => addToCart(product.id, variantId)} className="btn-store-primary min-w-[140px]">
+                <button type="button" onClick={addWithQty} className="btn-store-primary min-w-[140px]">
                   <ShoppingCart size={18} /> Add to cart
                 </button>
               ) : null}
@@ -345,7 +428,7 @@ export default function ProductPage() {
           {!product.hideCart ? (
             <button
               type="button"
-              onClick={() => addToCart(product.id, variantId)}
+              onClick={addWithQty}
               className="btn-store-outline min-h-[44px] shrink-0 px-4"
               aria-label="Add to cart"
             >

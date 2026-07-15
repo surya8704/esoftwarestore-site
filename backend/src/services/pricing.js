@@ -1,9 +1,11 @@
 import { Coupon, PricingRule, ProductVariant } from '../db/models.js'
 import { convertPrice, parseJsonList } from '../lib/utils.js'
 import { CURRENCIES } from '../config.js'
+import { applyVolumeDiscount } from '../lib/volumeTiers.js'
 import { getVariant } from './license.js'
 
 export { getVariant }
+export { VOLUME_DISCOUNT_TIERS, getVolumeDiscountPercent, publicVolumeTiers } from '../lib/volumeTiers.js'
 
 /** Convert an amount from one catalog currency to another using INR-anchored rates. */
 export function convertCurrencyAmount(amount, fromCurrency, toCurrency, currencies = CURRENCIES) {
@@ -53,8 +55,12 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
   // Regional / rule price overrides are stored in the rule's currency (often the region's local currency).
   if (matched?.priceOverride != null && Number(matched.priceOverride) > 0) {
     const ruleCurrency = matched.currency || 'INR'
+    const converted = convertCurrencyAmount(matched.priceOverride, ruleCurrency, targetCurrency)
+    const volume = applyVolumeDiscount(converted, quantity)
     return {
-      unitPrice: convertCurrencyAmount(matched.priceOverride, ruleCurrency, targetCurrency),
+      unitPrice: volume.unitPrice,
+      listUnitPrice: volume.listUnitPrice,
+      volumeDiscountPercent: volume.volumeDiscountPercent,
       currency: targetCurrency,
       paymentMethods: parseJsonList(matched.paymentMethods),
       shippingMode: matched.shippingMode ?? 'instant_digital',
@@ -69,8 +75,13 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     .find((item) => quantity >= item.tierMinQty)
   if (tier) basePriceInr = tier.price
 
+  const converted = convertPrice(basePriceInr, targetCurrency, CURRENCIES)
+  const volume = applyVolumeDiscount(converted, quantity)
+
   return {
-    unitPrice: convertPrice(basePriceInr, targetCurrency, CURRENCIES),
+    unitPrice: volume.unitPrice,
+    listUnitPrice: volume.listUnitPrice,
+    volumeDiscountPercent: volume.volumeDiscountPercent,
     currency: targetCurrency,
     paymentMethods: parseJsonList(matched?.paymentMethods),
     shippingMode: matched?.shippingMode ?? 'instant_digital',

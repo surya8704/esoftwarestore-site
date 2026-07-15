@@ -39,6 +39,8 @@ export async function cartRoutes(app) {
               }
             : null,
           unitPrice: pricing.unitPrice,
+          listUnitPrice: pricing.listUnitPrice ?? pricing.unitPrice,
+          volumeDiscountPercent: pricing.volumeDiscountPercent ?? 0,
           lineTotal: pricing.unitPrice * item.quantity,
         }
       }),
@@ -69,6 +71,21 @@ export async function cartRoutes(app) {
       await CartItem.create({ cartId: cart._id, productId: payload.productId, variantId: payload.variantId, quantity: payload.quantity })
     }
     return { sessionId, success: true }
+  })
+
+  app.patch('/api/cart/items/:id', async (request, reply) => {
+    const schema = z.object({
+      quantity: z.coerce.number().int().min(1).max(9999),
+    })
+    const payload = schema.parse(request.body ?? {})
+    const sessionId = request.headers['x-session-id']
+    if (!sessionId) throw app.httpErrors.badRequest('Session required')
+    const cart = await getOrCreateCart(sessionId)
+    const item = await CartItem.findOne({ _id: request.params.id, cartId: cart._id })
+    if (!item) return reply.notFound('Cart item not found')
+    item.quantity = payload.quantity
+    await item.save()
+    return { success: true, quantity: item.quantity }
   })
 
   app.patch('/api/cart', async (request) => {

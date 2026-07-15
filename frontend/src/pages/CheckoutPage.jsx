@@ -597,6 +597,9 @@ export default function CheckoutPage() {
               <li key={item.id} className="flex justify-between gap-3 text-sm">
                 <span className="text-store-body">
                   {item.product.name} × {item.quantity}
+                  {item.volumeDiscountPercent ? (
+                    <span className="ml-1 text-xs font-semibold text-[#059669]">(-{item.volumeDiscountPercent}% volume)</span>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => handleRemove(item.id)}

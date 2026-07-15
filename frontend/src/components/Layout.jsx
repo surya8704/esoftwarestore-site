@@ -28,7 +28,7 @@ function navLinkClass(active) {
 
 export default function Layout({ children }) {
   const { t } = useTranslation()
-  const { cart, currency, country, locale, refreshCart, removeFromCart, user } = useApp()
+  const { cart, currency, country, locale, refreshCart, removeFromCart, updateCartItemQuantity, user } = useApp()
   const [cartOpen, setCartOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -382,6 +382,7 @@ export default function Layout({ children }) {
         cart={cart}
         currency={currency}
         onRemove={removeFromCart}
+        onUpdateQuantity={updateCartItemQuantity}
       />
       <ChatWidget />
       <MobileBottomNav
