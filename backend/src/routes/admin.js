@@ -41,6 +41,10 @@ import {
 } from '../services/license.js'
 import { buildEarningsReport } from '../services/reports.js'
 import {
+  listProductRegionalPrices,
+  syncProductRegionalPrices,
+} from '../services/pricing.js'
+import {
   createGuide,
   deleteGuide,
   getAdminGuide,
@@ -571,6 +575,15 @@ export async function adminRoutes(app) {
     const schema = z.object({
       allowedCountries: z.array(z.string().trim().toUpperCase().length(2)).default([]),
       blockedCountries: z.array(z.string().trim().toUpperCase().length(2)).default([]),
+      regionalPrices: z
+        .array(
+          z.object({
+            countryCode: z.string().trim().toUpperCase().length(2),
+            price: z.coerce.number().positive().optional().nullable(),
+            currency: z.string().trim().toUpperCase().length(3).optional(),
+          }),
+        )
+        .optional(),
     })
     const payload = schema.parse(request.body ?? {})
     const encode = (list) => (list?.length ? JSON.stringify(list) : null)
@@ -583,7 +596,54 @@ export async function adminRoutes(app) {
       { new: true },
     )
     if (!product) return reply.notFound('Product not found')
-    return { product: normalizeProduct(product) }
+
+    let regionalPrices = []
+    if (payload.regionalPrices) {
+      regionalPrices = await syncProductRegionalPrices(product, payload.regionalPrices)
+    } else {
+      regionalPrices = await listProductRegionalPrices(product._id)
+    }
+
+    return {
+      product: normalizeProduct(product),
+      regionalPrices,
+    }
+  })
+
+  app.get('/api/admin/products/:id/regional-prices', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const product = await Product.findById(request.params.id)
+    if (!product) return reply.notFound('Product not found')
+    const regionalPrices = await listProductRegionalPrices(product._id)
+    return {
+      productId: product._id.toString(),
+      productName: product.name,
+      basePrice: Number(product.price),
+      originalPrice: Number(product.originalPrice),
+      currency: 'INR',
+      regionalPrices,
+    }
+  })
+
+  app.put('/api/admin/products/:id/regional-prices', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const schema = z.object({
+      regionalPrices: z.array(
+        z.object({
+          countryCode: z.string().trim().toUpperCase().length(2),
+          price: z.coerce.number().positive().optional().nullable(),
+          currency: z.string().trim().toUpperCase().length(3).optional(),
+        }),
+      ),
+    })
+    const payload = schema.parse(request.body ?? {})
+    const product = await Product.findById(request.params.id)
+    if (!product) return reply.notFound('Product not found')
+    const regionalPrices = await syncProductRegionalPrices(product, payload.regionalPrices)
+    return {
+      productId: product._id.toString(),
+      productName: product.name,
+      basePrice: Number(product.price),
+      regionalPrices,
+    }
   })
 
   app.delete('/api/admin/products/:id', { preHandler: [app.requireAdmin] }, async (request) => {

@@ -5,6 +5,26 @@ import { getVariant } from './license.js'
 
 export { getVariant }
 
+/** Convert an amount from one catalog currency to another using INR-anchored rates. */
+export function convertCurrencyAmount(amount, fromCurrency, toCurrency, currencies = CURRENCIES) {
+  const from = String(fromCurrency || 'INR').toUpperCase()
+  const to = String(toCurrency || 'INR').toUpperCase()
+  const value = Number(amount) || 0
+  if (from === to) return Math.round(value)
+  const fromRate = currencies[from]?.rate ?? 1
+  const toRate = currencies[to]?.rate ?? 1
+  if (!fromRate) return Math.round(value * toRate)
+  return Math.round((value / fromRate) * toRate)
+}
+
+function ruleSpecificity(rule) {
+  let score = Number(rule.minQty) || 0
+  if (rule.productId) score += 100
+  if (rule.countryCode) score += 10
+  if (rule.variantId) score += 50
+  return score
+}
+
 function matchRules(rules, { product, countryCode, variantId, quantity }) {
   const productId = String(product._id ?? product.id)
   return rules
@@ -12,10 +32,10 @@ function matchRules(rules, { product, countryCode, variantId, quantity }) {
       if (rule.countryCode && rule.countryCode !== countryCode) return false
       if (rule.productId && String(rule.productId) !== productId) return false
       if (rule.variantId && variantId && String(rule.variantId) !== String(variantId)) return false
-      if (rule.minQty > quantity) return false
+      if ((rule.minQty ?? 1) > quantity) return false
       return true
     })
-    .sort((a, b) => b.minQty - a.minQty)
+    .sort((a, b) => ruleSpecificity(b) - ruleSpecificity(a))
 }
 
 function resolveFromContext(product, context, { countryCode, currency, variantId = null, quantity = 1 }) {
@@ -24,22 +44,38 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     ? productVariants.find((v) => String(v._id) === String(variantId))
     : null
 
-  let basePrice = variant?.price ?? product.price
+  let basePriceInr = variant?.price ?? product.price
   const rules = context?.rules ?? []
-
   const matching = matchRules(rules, { product, countryCode, variantId, quantity })
-  if (matching[0]?.priceOverride) basePrice = matching[0].priceOverride
+  const matched = matching[0]
+  const targetCurrency = currency || 'INR'
 
-  const tier = [...productVariants].sort((a, b) => a.tierMinQty - b.tierMinQty).reverse().find((item) => quantity >= item.tierMinQty)
-  if (tier) basePrice = tier.price
+  // Regional / rule price overrides are stored in the rule's currency (often the region's local currency).
+  if (matched?.priceOverride != null && Number(matched.priceOverride) > 0) {
+    const ruleCurrency = matched.currency || 'INR'
+    return {
+      unitPrice: convertCurrencyAmount(matched.priceOverride, ruleCurrency, targetCurrency),
+      currency: targetCurrency,
+      paymentMethods: parseJsonList(matched.paymentMethods),
+      shippingMode: matched.shippingMode ?? 'instant_digital',
+      variant,
+      priceSource: 'regional',
+    }
+  }
 
-  const resolvedCurrency = matching[0]?.currency ?? currency
+  const tier = [...productVariants]
+    .sort((a, b) => a.tierMinQty - b.tierMinQty)
+    .reverse()
+    .find((item) => quantity >= item.tierMinQty)
+  if (tier) basePriceInr = tier.price
+
   return {
-    unitPrice: convertPrice(basePrice, resolvedCurrency, CURRENCIES),
-    currency: resolvedCurrency,
-    paymentMethods: parseJsonList(matching[0]?.paymentMethods),
-    shippingMode: matching[0]?.shippingMode ?? 'instant_digital',
+    unitPrice: convertPrice(basePriceInr, targetCurrency, CURRENCIES),
+    currency: targetCurrency,
+    paymentMethods: parseJsonList(matched?.paymentMethods),
+    shippingMode: matched?.shippingMode ?? 'instant_digital',
     variant,
+    priceSource: tier ? 'tier' : 'base',
   }
 }
 
@@ -76,6 +112,96 @@ export async function resolveProductPrice(product, { countryCode, currency, vari
     }
   }
   return resolveFromContext(product, context, { countryCode, currency, variantId, quantity })
+}
+
+export async function listProductRegionalPrices(productId) {
+  const rules = await PricingRule.find({
+    productId,
+    active: true,
+    countryCode: { $ne: null, $exists: true },
+    priceOverride: { $ne: null },
+  })
+    .sort({ countryCode: 1 })
+    .lean()
+
+  return rules
+    .filter((rule) => rule.countryCode && Number(rule.priceOverride) > 0)
+    .map((rule) => ({
+      id: String(rule._id),
+      countryCode: rule.countryCode,
+      price: Number(rule.priceOverride),
+      currency: rule.currency || 'INR',
+      name: rule.name,
+    }))
+}
+
+/**
+ * Upsert country→price rows for a product. Empty/null price removes that country's override.
+ * Prices are stored in each region's local currency (see COUNTRY_REGION mapping).
+ */
+export async function syncProductRegionalPrices(product, regionalPrices = []) {
+  const productId = product._id ?? product.id
+  const productName = product.name || 'Product'
+  const incoming = Array.isArray(regionalPrices) ? regionalPrices : []
+
+  const desired = new Map()
+  for (const row of incoming) {
+    const countryCode = String(row.countryCode || '').trim().toUpperCase()
+    if (!countryCode || countryCode.length !== 2) continue
+    const price = Number(row.price)
+    if (!Number.isFinite(price) || price <= 0) continue
+    const currency = String(row.currency || 'INR').trim().toUpperCase().slice(0, 3)
+    desired.set(countryCode, { price: Math.round(price), currency })
+  }
+
+  const existing = await PricingRule.find({
+    productId,
+    countryCode: { $ne: null, $exists: true },
+    priceOverride: { $ne: null },
+  })
+
+  const byCountry = new Map()
+  for (const rule of existing) {
+    if (!rule.countryCode) continue
+    const key = rule.countryCode.toUpperCase()
+    if (!byCountry.has(key)) byCountry.set(key, [])
+    byCountry.get(key).push(rule)
+  }
+
+  for (const [countryCode, rows] of byCountry.entries()) {
+    const wanted = desired.get(countryCode)
+    const [primary, ...dupes] = rows
+    if (!wanted) {
+      await PricingRule.deleteMany({ _id: { $in: rows.map((r) => r._id) } })
+      continue
+    }
+    primary.name = `Regional · ${productName} · ${countryCode}`
+    primary.priceOverride = wanted.price
+    primary.currency = wanted.currency
+    primary.minQty = 1
+    primary.active = true
+    primary.variantId = undefined
+    await primary.save()
+    if (dupes.length) {
+      await PricingRule.deleteMany({ _id: { $in: dupes.map((r) => r._id) } })
+    }
+    desired.delete(countryCode)
+  }
+
+  for (const [countryCode, wanted] of desired.entries()) {
+    await PricingRule.create({
+      name: `Regional · ${productName} · ${countryCode}`,
+      productId,
+      countryCode,
+      priceOverride: wanted.price,
+      currency: wanted.currency,
+      minQty: 1,
+      shippingMode: 'instant_digital',
+      active: true,
+    })
+  }
+
+  return listProductRegionalPrices(productId)
 }
 
 export async function validateCoupon(code, { subtotal, countryCode, productIds = [] }) {

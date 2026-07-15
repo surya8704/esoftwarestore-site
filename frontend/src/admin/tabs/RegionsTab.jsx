@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Globe2, LoaderCircle, Search, Save } from 'lucide-react'
-import { dashboardApi } from '../api'
+import { Globe2, IndianRupee, LoaderCircle, Search, Save } from 'lucide-react'
+import { dashboardApi, formatMoney } from '../api'
 import { CountryRestrictionPicker } from '../components/RestrictionPickers'
+import RegionalPricesEditor, {
+  mapToRegionalPricesPayload,
+  regionalPricesToMap,
+} from '../components/RegionalPricesEditor'
 import { REGION_OPTIONS } from '../../lib/region'
 
 function summarize(product) {
@@ -24,7 +28,9 @@ export default function RegionsTab() {
   const [selectedId, setSelectedId] = useState(null)
   const [allowedCountries, setAllowedCountries] = useState([])
   const [blockedCountries, setBlockedCountries] = useState([])
+  const [priceByCountry, setPriceByCountry] = useState({})
   const [loading, setLoading] = useState(true)
+  const [loadingPrices, setLoadingPrices] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
 
@@ -57,11 +63,21 @@ export default function RegionsTab() {
 
   const selected = products.find((p) => p.id === selectedId) ?? null
 
-  const openProduct = (product) => {
+  const openProduct = async (product) => {
     setSelectedId(product.id)
     setAllowedCountries(product.allowedCountries ?? [])
     setBlockedCountries(product.blockedCountries ?? [])
+    setPriceByCountry({})
     setStatus('')
+    setLoadingPrices(true)
+    try {
+      const data = await dashboardApi(`/api/admin/products/${product.id}/regional-prices`)
+      setPriceByCountry(regionalPricesToMap(data.regionalPrices))
+    } catch (err) {
+      setStatus(err.message)
+    } finally {
+      setLoadingPrices(false)
+    }
   }
 
   const save = async (e) => {
@@ -75,6 +91,7 @@ export default function RegionsTab() {
         body: JSON.stringify({
           allowedCountries,
           blockedCountries,
+          regionalPrices: mapToRegionalPricesPayload(priceByCountry),
         }),
       })
       setProducts((prev) =>
@@ -88,7 +105,12 @@ export default function RegionsTab() {
             : p,
         ),
       )
-      setStatus(`Saved region rules for ${result.product.name}`)
+      setPriceByCountry(regionalPricesToMap(result.regionalPrices))
+      const priceCount = result.regionalPrices?.length ?? 0
+      setStatus(
+        `Saved for ${result.product.name} only` +
+          (priceCount ? ` · ${priceCount} regional price${priceCount === 1 ? '' : 's'}` : ' · base INR + FX elsewhere'),
+      )
     } catch (err) {
       setStatus(err.message)
     } finally {
@@ -101,7 +123,7 @@ export default function RegionsTab() {
       <div>
         <h2 className="text-2xl font-bold">Regions</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Control which countries can see each product. Leave allowed empty for worldwide, then optionally block specific countries.
+          Edit visibility and regional sale prices <strong>one product at a time</strong>. Each product keeps its own country prices.
         </p>
       </div>
 
@@ -117,7 +139,7 @@ export default function RegionsTab() {
 
       {loading ? <p className="text-sm text-slate-500">Loading products…</p> : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
         <div className="space-y-3">
           {filtered.map((product) => {
             const active = product.id === selectedId
@@ -139,7 +161,7 @@ export default function RegionsTab() {
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-900 dark:text-slate-100">{product.name}</p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {product.category} · /{product.slug}
+                      {product.category} · base {formatMoney(product.price)} · /{product.slug}
                     </p>
                     <p className="mt-2 text-xs font-medium text-slate-600 dark:text-slate-300">
                       {summarize(product)}
@@ -159,13 +181,20 @@ export default function RegionsTab() {
             <div className="flex min-h-64 flex-col items-center justify-center text-center text-slate-500">
               <Globe2 size={28} className="mb-3 text-slate-400" />
               <p className="font-medium">Select a product</p>
-              <p className="mt-1 text-sm">Choose a product on the left to set allowed and blocked countries.</p>
+              <p className="mt-1 text-sm">Regional prices are saved per product — pick one on the left.</p>
             </div>
           ) : (
             <form onSubmit={save} className="space-y-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Editing</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Editing this product only</p>
                 <h3 className="mt-1 text-xl font-bold">{selected.name}</h3>
+                <p className="mt-1 inline-flex items-center gap-1 text-sm text-slate-500">
+                  <IndianRupee size={14} />
+                  Base catalog price: <strong className="text-slate-700 dark:text-slate-200">{formatMoney(selected.price)}</strong>
+                  {selected.originalPrice > selected.price ? (
+                    <span className="text-slate-400 line-through">{formatMoney(selected.originalPrice)}</span>
+                  ) : null}
+                </p>
               </div>
 
               <CountryRestrictionPicker
@@ -182,16 +211,29 @@ export default function RegionsTab() {
               />
 
               <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-white/5">
-                Preview: {summarize({ allowedCountries, blockedCountries })}
+                Visibility preview: {summarize({ allowedCountries, blockedCountries })}
               </div>
+
+              {loadingPrices ? (
+                <p className="flex items-center gap-2 text-sm text-slate-500">
+                  <LoaderCircle className="animate-spin" size={14} /> Loading regional prices for this product…
+                </p>
+              ) : (
+                <RegionalPricesEditor
+                  priceByCountry={priceByCountry}
+                  onChange={setPriceByCountry}
+                  disabled={saving}
+                  compact
+                />
+              )}
 
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || loadingPrices}
                 className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {saving ? <LoaderCircle className="animate-spin" size={14} /> : <Save size={14} />}
-                Save region rules
+                Save for this product
               </button>
             </form>
           )}

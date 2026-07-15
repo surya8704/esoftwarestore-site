@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Package, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { dashboardApi, uploadProductImage, uploadProductLicenseKeys } from '../api'
 import { defaultVendorPermissions } from '../vendorAccess'
+import RegionalPricesEditor, {
+  mapToRegionalPricesPayload,
+  regionalPricesToMap,
+} from '../components/RegionalPricesEditor'
 
 export default function ProductsTab({
   isAdmin,
@@ -13,6 +17,8 @@ export default function ProductsTab({
   const [vendors, setVendors] = useState([])
   const [form, setForm] = useState(emptyProductForm)
   const [editingId, setEditingId] = useState(null)
+  const [priceByCountry, setPriceByCountry] = useState({})
+  const [loadingRegional, setLoadingRegional] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [keysUploadingId, setKeysUploadingId] = useState(null)
@@ -65,9 +71,19 @@ export default function ProductsTab({
   const reset = () => {
     setEditingId(null)
     setForm(emptyProductForm)
+    setPriceByCountry({})
     setBundlePickId('')
     setStatus('')
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const saveRegionalPrices = async (productId) => {
+    if (!isAdmin || !productId || !canEditPrices) return 0
+    const result = await dashboardApi(`/api/admin/products/${productId}/regional-prices`, {
+      method: 'PUT',
+      body: JSON.stringify({ regionalPrices: mapToRegionalPricesPayload(priceByCountry) }),
+    })
+    return result.regionalPrices?.length ?? 0
   }
 
   const handleImageUpload = async (event) => {
@@ -157,14 +173,26 @@ export default function ProductsTab({
         blockedCountries: form.blockedCountries ?? [],
       }
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
+      let productId = editingId
+      let wasEditing = Boolean(editingId)
       if (editingId) {
         await dashboardApi(`${base}/${editingId}`, { method: 'PUT', body: JSON.stringify(body) })
       } else {
-        await dashboardApi(base, { method: 'POST', body: JSON.stringify(body) })
+        const created = await dashboardApi(base, { method: 'POST', body: JSON.stringify(body) })
+        productId = created.product?.id
       }
+
+      let regionalCount = 0
+      if (isAdmin && productId) {
+        regionalCount = await saveRegionalPrices(productId)
+      }
+
       await load()
       reset()
-      setStatus(editingId ? 'Product updated' : 'Product created')
+      setStatus(
+        (wasEditing ? 'Product updated' : 'Product created') +
+          (regionalCount ? ` · ${regionalCount} regional price${regionalCount === 1 ? '' : 's'} saved` : ''),
+      )
     } catch (err) {
       setStatus(err.message)
     } finally {
@@ -172,7 +200,7 @@ export default function ProductsTab({
     }
   }
 
-  const edit = (product) => {
+  const edit = async (product) => {
     setEditingId(product.id)
     setForm({
       name: product.name,
@@ -197,6 +225,19 @@ export default function ProductsTab({
     })
     setBundlePickId('')
     setStatus('')
+    setPriceByCountry({})
+
+    if (isAdmin) {
+      setLoadingRegional(true)
+      try {
+        const data = await dashboardApi(`/api/admin/products/${product.id}/regional-prices`)
+        setPriceByCountry(regionalPricesToMap(data.regionalPrices))
+      } catch (err) {
+        setStatus(err.message)
+      } finally {
+        setLoadingRegional(false)
+      }
+    }
   }
 
   const geoLabel = (product) => {
@@ -514,9 +555,25 @@ export default function ProductsTab({
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
         </label>
 
+        {isAdmin && canEditPrices ? (
+          <div className="sm:col-span-2">
+            {loadingRegional ? (
+              <p className="flex items-center gap-2 text-sm text-slate-500">
+                <LoaderCircle className="animate-spin" size={14} /> Loading this product’s regional prices…
+              </p>
+            ) : (
+              <RegionalPricesEditor
+                priceByCountry={priceByCountry}
+                onChange={setPriceByCountry}
+                disabled={loading || uploading}
+              />
+            )}
+          </div>
+        ) : null}
+
         {isAdmin ? (
           <p className="sm:col-span-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-white/5">
-            Country visibility is managed on the <strong>Regions</strong> page.
+            Country visibility (allow/block) is managed on the <strong>Regions</strong> page. Regional sale prices above apply only to <strong>this product</strong>.
           </p>
         ) : null}
 

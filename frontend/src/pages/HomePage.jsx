@@ -213,7 +213,7 @@ export default function HomePage() {
           ))}
         </div>
 
-        <div className="store-card flex flex-col gap-3 p-3 sm:gap-4 sm:p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="store-card flex flex-col gap-3 p-3 sm:gap-3 sm:p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="hidden items-center gap-2 text-sm text-store-muted sm:flex">
             <span className="font-semibold text-store-heading">{t('gridView')}</span>
             <button type="button" onClick={() => setColumns(2)} className={`rounded-lg border p-2 transition-colors ${columns === 2 ? 'border-[#f97316] bg-store-primary-muted text-[#f97316]' : 'border-store hover:border-[#f97316]/50'}`} aria-label="2 columns">
@@ -227,16 +227,19 @@ export default function HomePage() {
             </button>
           </div>
 
-          <select
-            value={sort}
-            onChange={(e) => handleSortChange(e.target.value)}
-            className="store-input w-full sm:w-auto sm:min-w-[220px]"
-            aria-label={t('sortDefault')}
-          >
-            {SORT_KEYS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{t(opt.key)}</option>
-            ))}
-          </select>
+          <label className="flex w-full items-center gap-2 sm:w-auto sm:max-w-[12rem] sm:shrink-0">
+            <span className="sr-only">{t('sortDefault')}</span>
+            <select
+              value={sort}
+              onChange={(e) => handleSortChange(e.target.value)}
+              className="store-input !w-full !py-2 !px-2.5 text-xs sm:text-sm sm:!w-auto sm:min-w-0 sm:max-w-[12rem]"
+              aria-label={t('sortDefault')}
+            >
+              {SORT_KEYS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{t(opt.key)}</option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {filtered.length > 0 ? (
