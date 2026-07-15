@@ -358,6 +358,22 @@ const announcementSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 })
 
+/** Admin-created marketing reviews shown on product pages (merged with generated filler). */
+const productReviewSchema = new mongoose.Schema({
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
+  author: { type: String, required: true, maxlength: 120 },
+  locale: { type: String, required: true, maxlength: 10, default: 'en' },
+  rating: { type: Number, required: true, min: 1, max: 5 },
+  title: { type: String, required: true, maxlength: 160 },
+  text: { type: String, required: true, maxlength: 2000 },
+  verified: { type: Boolean, required: true, default: true },
+  helpful: { type: Number, required: true, default: 12, min: 0 },
+  active: { type: Boolean, required: true, default: true },
+  createdAt: { type: Date, default: Date.now, required: true },
+  updatedAt: { type: Date, default: Date.now },
+})
+productReviewSchema.index({ productId: 1, active: 1, createdAt: -1 })
+
 export const User = mongoose.model('User', userSchema)
 export const Vendor = mongoose.model('Vendor', vendorSchema)
 export const VendorPayout = mongoose.model('VendorPayout', vendorPayoutSchema)
@@ -382,4 +398,5 @@ export const OrderNote = mongoose.model('OrderNote', orderNoteSchema)
 export const SitePage = mongoose.model('SitePage', sitePageSchema)
 export const Guide = mongoose.model('Guide', guideSchema)
 export const Announcement = mongoose.model('Announcement', announcementSchema)
+export const ProductReview = mongoose.model('ProductReview', productReviewSchema)
 

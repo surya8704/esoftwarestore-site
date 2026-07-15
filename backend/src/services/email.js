@@ -375,10 +375,74 @@ export async function sendAdminKeyDeliveryEmail({ order, items, confirmationCode
   })
 }
 
-export async function sendAbandonedCartEmail({ email, cartId, stage, couponCode }) {
-  const subjects = ['You left something behind', 'Still thinking? Here is 10% off', 'Last chance — your cart expires soon']
-  const html = `<div><h2>${subjects[stage] ?? subjects[0]}</h2><p>${couponCode ? `Use code <strong>${couponCode}</strong>.` : ''}</p><a href="${config.clientUrl}/checkout?cart=${cartId}">Resume checkout</a></div>`
-  return sendEmail({ to: email, subject: subjects[stage] ?? subjects[0], template: `abandoned_cart_${stage}`, html, metadata: { cartId, stage } })
+export async function sendAbandonedCartEmail({
+  email,
+  cartId,
+  stage,
+  items = [],
+  subtotal = 0,
+  currency = 'INR',
+}) {
+  const subjects = [
+    'You left something in your cart',
+    'Still thinking about your cart?',
+    'Last chance — finish your order before it expires',
+  ]
+  const headlines = [
+    'Your licenses are waiting',
+    'Complete your order anytime',
+    'Last reminder before your cart expires',
+  ]
+  const intros = [
+    'You added items to your cart on eSoftware Store but didn’t finish checkout. Resume anytime — delivery is instant after payment.',
+    'Your cart is still waiting. Complete checkout in minutes and we’ll email your license keys right away.',
+    'This is your final reminder. Finish checkout now to receive your license keys by email right away.',
+  ]
+
+  const subject = subjects[stage] ?? subjects[0]
+  const resumeParams = new URLSearchParams()
+  resumeParams.set('utm_source', 'abandoned_cart')
+  resumeParams.set('utm_campaign', `stage_${stage}`)
+  const resumeUrl = `${config.clientUrl}/checkout?${resumeParams}`
+
+  const currencyCode = currency || 'INR'
+  const itemRows = (items || [])
+    .map((item) => {
+      const name = escapeHtml(item.name)
+      const qty = Number(item.quantity) || 1
+      const line = Number(item.lineTotal ?? item.unitPrice ?? 0)
+      return `<tr>
+        <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;font-family:Arial,sans-serif;font-size:14px;color:#0f172a;">
+          <strong>${name}</strong><br/><span style="color:#64748b;">Qty ${qty}</span>
+        </td>
+        <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-family:Arial,sans-serif;font-size:14px;color:#0f172a;">
+          ${escapeHtml(currencyCode)} ${line.toLocaleString()}
+        </td>
+      </tr>`
+    })
+    .join('')
+
+  const html = `<div style="max-width:560px;margin:0 auto;padding:24px;background:#f8fafc;">
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;">
+      <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#f97316;">eSoftware Store</p>
+      <h1 style="margin:0 0 12px;font-family:Arial,sans-serif;font-size:22px;line-height:1.3;color:#0f172a;">${escapeHtml(headlines[stage] ?? headlines[0])}</h1>
+      <p style="margin:0 0 20px;font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#475569;">${escapeHtml(intros[stage] ?? intros[0])}</p>
+      ${itemRows ? `<table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${itemRows}</table>
+      <p style="margin:12px 0 0;text-align:right;font-family:Arial,sans-serif;font-size:15px;color:#0f172a;"><strong>Subtotal: ${escapeHtml(currencyCode)} ${Number(subtotal || 0).toLocaleString()}</strong></p>` : ''}
+      <p style="margin:24px 0 0;">
+        <a href="${escapeHtml(resumeUrl)}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;font-family:Arial,sans-serif;font-size:15px;font-weight:700;padding:12px 22px;border-radius:999px;">Resume checkout</a>
+      </p>
+      <p style="margin:18px 0 0;font-family:Arial,sans-serif;font-size:12px;color:#94a3b8;">If you already completed your order, you can ignore this email.</p>
+    </div>
+  </div>`
+
+  return sendEmail({
+    to: email,
+    subject,
+    template: `abandoned_cart_${stage}`,
+    html,
+    metadata: { cartId: String(cartId), stage, itemCount: items?.length ?? 0 },
+  })
 }
 
 export async function sendNewsletterWelcome({ email }) {

@@ -235,3 +235,82 @@ export function attachReviewSummary(product) {
     averageRating: averageFromProductRating(product?.rating),
   }
 }
+
+export function getReviewMarketingTemplates() {
+  return {
+    locales: Object.entries(LOCALE_META).map(([code, meta]) => ({
+      code,
+      label: meta.label,
+      dir: meta.dir,
+    })),
+    names: NAMES,
+    bodies: BODIES,
+  }
+}
+
+export function mapStoredReview(doc) {
+  const locale = String(doc.locale || 'en').slice(0, 2).toLowerCase()
+  const createdAt = doc.createdAt ? new Date(doc.createdAt) : new Date()
+  const daysAgo = Math.max(0, Math.round((Date.now() - createdAt.getTime()) / (24 * 60 * 60 * 1000)))
+  return {
+    id: String(doc._id ?? doc.id),
+    author: doc.author,
+    locale,
+    language: LOCALE_META[locale]?.label ?? locale,
+    dir: LOCALE_META[locale]?.dir ?? 'ltr',
+    rating: Number(doc.rating) || 5,
+    title: doc.title,
+    text: doc.text,
+    verified: doc.verified !== false,
+    helpful: Number(doc.helpful) || 0,
+    createdAt: createdAt.toISOString(),
+    daysAgo,
+    source: 'admin',
+  }
+}
+
+/**
+ * Put admin-created reviews first, then fill with generated marketing-style reviews.
+ */
+export function mergeProductReviews(product, storedDocs = [], options = {}) {
+  const preferred = String(options.locale ?? 'en').slice(0, 2).toLowerCase()
+  const limit = Math.min(24, Math.max(4, Number(options.limit) || 10))
+  const generated = generateProductReviews(product, { locale: preferred, limit })
+
+  const custom = (storedDocs || [])
+    .filter((doc) => doc && doc.active !== false)
+    .map(mapStoredReview)
+    .sort((a, b) => {
+      const aPref = a.locale === preferred ? 0 : 1
+      const bPref = b.locale === preferred ? 0 : 1
+      if (aPref !== bPref) return aPref - bPref
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
+
+  const remaining = Math.max(0, limit - custom.length)
+  const filler = generated.reviews.slice(0, remaining)
+  const reviews = [...custom, ...filler].slice(0, limit)
+
+  const extra = custom.length
+  const reviewCount = generated.reviewCount + extra
+  const distribution = { ...generated.distribution }
+  for (const review of custom) {
+    const key = String(Math.min(5, Math.max(1, Math.round(review.rating))))
+    distribution[key] = (distribution[key] || 0) + 1
+  }
+
+  let averageRating = generated.averageRating
+  if (custom.length) {
+    const customAvg = custom.reduce((sum, r) => sum + r.rating, 0) / custom.length
+    averageRating = Math.round(((generated.averageRating * generated.reviewCount + customAvg * custom.length) / reviewCount) * 10) / 10
+  }
+
+  return {
+    averageRating,
+    reviewCount,
+    distribution,
+    reviews,
+    locales: generated.locales,
+    customReviewCount: custom.length,
+  }
+}

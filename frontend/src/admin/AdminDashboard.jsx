@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   LogOut,
   Megaphone,
+  MessageSquareQuote,
   Package,
   Receipt,
   ShoppingBag,
@@ -33,6 +34,7 @@ import GuidesTab from './tabs/GuidesTab'
 import ReportsTab from './tabs/ReportsTab'
 import RegionsTab from './tabs/RegionsTab'
 import AnnouncementsTab from './tabs/AnnouncementsTab'
+import ReviewsTab from './tabs/ReviewsTab'
 import ThemeToggle from '../components/ThemeToggle'
 import { defaultVendorPermissions, normalizeVendorPermissions } from './vendorAccess'
 
@@ -42,6 +44,7 @@ const ADMIN_TABS = [
   { id: 'vendors', label: 'Vendors', icon: Building2 },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'regions', label: 'Regions', icon: Globe2 },
+  { id: 'reviews', label: 'Reviews', icon: MessageSquareQuote },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
   { id: 'orders', label: 'Orders', icon: ShoppingBag },
   { id: 'customers', label: 'Customers', icon: UserCircle },
@@ -244,6 +247,7 @@ export default function AdminDashboard() {
             />
           ) : null}
           {tab === 'regions' && isAdmin ? <RegionsTab /> : null}
+          {tab === 'reviews' && isAdmin ? <ReviewsTab /> : null}
           {tab === 'announcements' && isAdmin ? <AnnouncementsTab /> : null}
           {tab === 'orders' ? (
             <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} vendorPermissions={vendorPermissions} />

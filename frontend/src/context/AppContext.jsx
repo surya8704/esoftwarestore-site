@@ -212,6 +212,13 @@ export function AppProvider({ children }) {
       method: 'POST',
       body: JSON.stringify({ productId, variantId, quantity }),
     })
+    // Logged-in shoppers: attach email so abandoned-cart reminders can fire if they leave
+    if (user?.email) {
+      await api('/api/cart', {
+        method: 'PATCH',
+        body: JSON.stringify({ email: user.email, countryCode: country }),
+      }).catch(() => {})
+    }
     await refreshCart()
   }
 

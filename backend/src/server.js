@@ -24,6 +24,7 @@ import { processAbandonedCartFollowUps } from './services/marketing.js'
 import { pageRoutes } from './routes/pages.js'
 import { ensureGuidesSeeded } from './lib/siteContent.js'
 import { announcementRoutes } from './routes/announcements.js'
+import { reviewRoutes } from './routes/reviews.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, '..', 'uploads')
@@ -65,6 +66,7 @@ await productRoutes(app)
 await guideRoutes(app)
 await pageRoutes(app)
 await announcementRoutes(app)
+await reviewRoutes(app)
 await vendorRoutes(app)
 await cartRoutes(app)
 await checkoutRoutes(app)
@@ -87,4 +89,10 @@ setInterval(() => {
 
 app.listen({ port: config.port, host: '0.0.0.0' }).then(() => {
   app.log.info(`API running on port ${config.port}`)
+  // Kick once shortly after boot so reminders don’t wait a full hour after deploys
+  setTimeout(() => {
+    processAbandonedCartFollowUps()
+      .then((result) => app.log.info({ result }, 'Abandoned cart follow-up run'))
+      .catch((err) => app.log.error(err))
+  }, 15_000)
 })

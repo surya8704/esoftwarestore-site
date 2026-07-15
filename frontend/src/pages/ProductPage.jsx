@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Heart, Package, ShoppingCart, ZoomIn } from 
 import { api, formatPrice, trackPage, discountPercent, soldRecentlyCount, formatSoldRecently } from '../lib/api'
 import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_URL } from '../lib/contact'
 import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/products'
+import { getSimilarProducts } from '../lib/similarProducts'
 import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
@@ -81,7 +82,7 @@ export default function ProductPage() {
   const currentIndex = allProducts.findIndex((p) => p.slug === slug)
   const prevProduct = currentIndex > 0 ? allProducts[currentIndex - 1] : null
   const nextProduct = currentIndex < allProducts.length - 1 ? allProducts[currentIndex + 1] : null
-  const related = allProducts.filter((p) => p.category === product.category && p.slug !== slug).slice(0, 4)
+  const related = getSimilarProducts(product, allProducts, { limit: 8 })
 
   const buyNow = async () => {
     await addToCart(product.id, variantId)
@@ -312,7 +313,10 @@ export default function ProductPage() {
 
         {related.length > 0 ? (
           <section className="mt-16 border-t border-store pt-10">
-            <h2 className="text-xl font-extrabold text-store-heading">Related products</h2>
+            <h2 className="text-xl font-extrabold text-store-heading">Similar products</h2>
+            <p className="mt-1 text-sm text-store-muted">
+              Related editions and products like {product.name}
+            </p>
             <div className="mt-6 product-grid grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
               {related.map((p) => (
                 <ProductCard

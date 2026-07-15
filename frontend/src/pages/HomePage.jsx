@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Grid2x2, Grid3x3, LayoutGrid, Shield, Sparkles, Zap } from 'lucide-react'
 import { trackPage } from '../lib/api'
 import { getInstantProducts, loadProducts } from '../lib/products'
+import { sortByDefaultCatalogOrder } from '../lib/catalogSort'
 import usePageSize from '../hooks/usePageSize'
 import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
@@ -82,6 +83,7 @@ export default function HomePage() {
         list.sort((a, b) => (b.displayPrice ?? b.price) - (a.displayPrice ?? a.price))
         break
       default:
+        list = sortByDefaultCatalogOrder(list)
         break
     }
     return list

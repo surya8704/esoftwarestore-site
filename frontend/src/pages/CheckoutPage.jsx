@@ -86,6 +86,21 @@ export default function CheckoutPage() {
     }))
   }, [country, user])
 
+  // Save email early so abandoned-cart reminders can send if they leave without paying
+  useEffect(() => {
+    const email = (billing.email || '').trim()
+    if (!email || !email.includes('@') || !cart?.items?.length) return undefined
+
+    const timer = setTimeout(() => {
+      api('/api/cart', {
+        method: 'PATCH',
+        body: JSON.stringify({ email, countryCode: billing.countryCode || country }),
+      }).catch(() => {})
+    }, 800)
+
+    return () => clearTimeout(timer)
+  }, [billing.email, billing.countryCode, country, cart?.items?.length])
+
   const handleRemove = async (itemId) => {
     setRemovingId(itemId)
     try {
@@ -425,9 +440,20 @@ export default function CheckoutPage() {
                 required
                 value={billing.email}
                 onChange={(e) => setField('email', e.target.value)}
+                onBlur={() => {
+                  const email = (billing.email || '').trim()
+                  if (!email || !email.includes('@') || !cart?.items?.length) return
+                  api('/api/cart', {
+                    method: 'PATCH',
+                    body: JSON.stringify({ email, countryCode: billing.countryCode || country }),
+                  }).catch(() => {})
+                }}
                 className="store-input"
                 autoComplete="email"
               />
+              <p className="mt-1.5 text-xs text-store-muted">
+                We’ll email your license keys here. If you leave items in your cart, we may send a friendly reminder.
+              </p>
             </Field>
 
             {!user ? (

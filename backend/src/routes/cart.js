@@ -4,7 +4,7 @@ import { Cart, CartItem, Product } from '../db/models.js'
 import { generateSessionId } from '../lib/utils.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
 import { resolveProductPrice, validateCoupon } from '../services/pricing.js'
-import { trackAbandonedCart } from '../services/marketing.js'
+import { trackAbandonedCart, markCartRecoveredIfEmpty } from '../services/marketing.js'
 import { config } from '../config.js'
 
 async function getOrCreateCart(sessionId) {
@@ -93,6 +93,7 @@ export async function cartRoutes(app) {
     const cart = await getOrCreateCart(sessionId)
     const result = await CartItem.deleteOne({ _id: request.params.id, cartId: cart._id })
     if (result.deletedCount === 0) return reply.notFound('Cart item not found')
+    await markCartRecoveredIfEmpty(cart._id)
     return { success: true }
   })
 }

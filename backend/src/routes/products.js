@@ -1,11 +1,11 @@
 import { mapId } from '../db/client.js'
-import { Product, ProductVariant, SupportVideo } from '../db/models.js'
+import { Product, ProductReview, ProductVariant, SupportVideo } from '../db/models.js'
 import { isProductVisible } from '../lib/utils.js'
 import { createPricingContext, resolveProductPriceFromContext } from '../services/pricing.js'
 import { detectRegion, getRegionForCountry, COUNTRY_REGION } from '../services/geo.js'
 import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES } from '../config.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
-import { attachReviewSummary, generateProductReviews } from '../lib/productReviews.js'
+import { attachReviewSummary, mergeProductReviews } from '../lib/productReviews.js'
 import { attachBundleContents } from '../lib/bundles.js'
 
 const normalizeProduct = (product) => {
@@ -119,6 +119,11 @@ export async function productRoutes(app) {
     if (!product || !isProductVisible(product, country)) return reply.notFound('Product not found')
 
     const normalized = normalizeProduct(product)
-    return generateProductReviews(normalized, { locale, limit })
+    const stored = await ProductReview.find({ productId: product._id, active: true })
+      .sort({ createdAt: -1 })
+      .limit(48)
+      .lean()
+
+    return mergeProductReviews(normalized, stored, { locale, limit })
   })
 }
