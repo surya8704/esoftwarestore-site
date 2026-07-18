@@ -521,7 +521,7 @@ export async function adminRoutes(app) {
     }
 
     const importResult = await importLicenseKeys(product._id, keys)
-    const delivery = await processPendingKeyDeliveries({ limit: 100 })
+    const delivery = await processPendingKeyDeliveries({ limit: 100, productId: product._id })
 
     return {
       productId: product._id.toString(),
@@ -545,7 +545,7 @@ export async function adminRoutes(app) {
     if (existing) throw app.httpErrors.conflict('Slug already exists')
 
     const product = await Product.create({
-      vendorId: payload.vendorId ?? null,
+      vendorId: payload.vendorId || null,
       ...productWriteFields(payload),
     })
 
@@ -563,7 +563,7 @@ export async function adminRoutes(app) {
       request.params.id,
       {
         ...productWriteFields(payload),
-        vendorId: payload.vendorId ?? null,
+        vendorId: payload.vendorId || null,
       },
       { new: true },
     )

@@ -145,6 +145,14 @@ export default function ProductsTab({
     }))
   }
 
+  const slugify = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 120)
+
   const submit = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -153,8 +161,15 @@ export default function ProductsTab({
       if ((form.productType ?? 'standard') === 'bundle' && (form.bundleItems?.length ?? 0) < 2) {
         throw new Error('Add at least 2 products to create a bundle deal')
       }
+      const name = String(form.name || '').trim()
+      if (name.length < 2) throw new Error('Enter a product name (at least 2 characters)')
+      const slug = slugify(form.slug) || slugify(name)
+      if (!slug || slug.length < 2) throw new Error('Enter a valid slug (e.g. windows-11-pro)')
+
       const body = {
         ...form,
+        name,
+        slug,
         productType: form.productType ?? 'standard',
         bundleItems:
           (form.productType ?? 'standard') === 'bundle'
@@ -163,15 +178,20 @@ export default function ProductsTab({
                 quantity: Number(item.quantity) || 1,
               }))
             : [],
-        price: Number(form.price),
-        originalPrice: Number(form.originalPrice),
+        price: Math.round(Number(form.price)),
+        originalPrice: Math.round(Number(form.originalPrice)),
         rating: Number(form.rating),
-        stock: Number(form.stock),
+        stock: Math.max(0, Math.floor(Number(form.stock) || 0)),
         vendorId: form.vendorId || undefined,
         imageUrl: form.imageUrl || '',
         allowedCountries: form.allowedCountries ?? [],
         blockedCountries: form.blockedCountries ?? [],
       }
+      if (!Number.isFinite(body.price) || body.price < 1) throw new Error('Enter a valid price greater than 0')
+      if (!Number.isFinite(body.originalPrice) || body.originalPrice < 1) {
+        throw new Error('Enter a valid original price greater than 0')
+      }
+
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
       let productId = editingId
       let wasEditing = Boolean(editingId)
@@ -184,7 +204,16 @@ export default function ProductsTab({
 
       let regionalCount = 0
       if (isAdmin && productId) {
-        regionalCount = await saveRegionalPrices(productId)
+        try {
+          regionalCount = await saveRegionalPrices(productId)
+        } catch (regionalErr) {
+          await load()
+          setStatus(
+            (wasEditing ? 'Product saved' : 'Product created') +
+              ` · regional prices failed: ${regionalErr.message}`,
+          )
+          return
+        }
       }
 
       await load()
@@ -410,7 +439,22 @@ export default function ProductsTab({
         ].map(([key, label]) => (
           <label key={key}>
             <span className="mb-1 block text-xs font-medium">{label}</span>
-            <input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
+            <input
+              value={form[key]}
+              onChange={(e) => {
+                const value = e.target.value
+                setForm((prev) => {
+                  const next = { ...prev, [key]: value }
+                  if (key === 'name' && !editingId && (!prev.slug || prev.slug === slugify(prev.name))) {
+                    next.slug = slugify(value)
+                  }
+                  if (key === 'slug') next.slug = slugify(value)
+                  return next
+                })
+              }}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+              placeholder={key === 'slug' ? 'auto-from-name' : undefined}
+            />
           </label>
         ))}
 
@@ -577,8 +621,23 @@ export default function ProductsTab({
           </p>
         ) : null}
 
-        <div className="flex gap-2 sm:col-span-2">
-          <button disabled={loading || uploading} className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+        <div className="flex flex-col gap-2 sm:col-span-2">
+          {status ? (
+            <p
+              className={`rounded-xl px-3 py-2 text-sm ${
+                /created|updated|imported|uploaded|saved/i.test(status) && !/fail|error|invalid|required/i.test(status)
+                  ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200'
+                  : 'bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-200'
+              }`}
+            >
+              {status}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={loading || uploading || (!canCreateProducts && !editingId)}
+            className="inline-flex w-fit items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
             {loading ? <LoaderCircle className="animate-spin" size={16} /> : editingId ? <Pencil size={16} /> : <Plus size={16} />}
             {editingId ? 'Update' : 'Create'}
           </button>
@@ -652,7 +711,6 @@ export default function ProductsTab({
           )
         })}
       </div>
-      {status ? <p className="mt-4 text-sm text-slate-500">{status}</p> : null}
     </div>
   )
 }

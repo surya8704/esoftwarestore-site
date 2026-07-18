@@ -16,22 +16,29 @@ const bundleItemSchema = z.object({
 
 const productSchema = z
   .object({
-    name: z.string().min(2),
-    slug: z.string().min(2),
-    category: z.string().min(2),
+    name: z.string().trim().min(2, 'Name must be at least 2 characters'),
+    slug: z
+      .string()
+      .trim()
+      .min(2, 'Slug is required (e.g. windows-11-pro)')
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/i, 'Slug may only contain letters, numbers, and hyphens'),
+    category: z.string().trim().min(2, 'Category is required'),
     productType: z.enum(['standard', 'bundle']).default('standard'),
     bundleItems: z.array(bundleItemSchema).optional().default([]),
-    price: z.coerce.number().int().min(1),
-    originalPrice: z.coerce.number().int().min(1),
+    price: z.coerce.number().positive('Price must be greater than 0').transform((n) => Math.round(n)),
+    originalPrice: z.coerce.number().positive('Original price must be greater than 0').transform((n) => Math.round(n)),
     rating: z.coerce.number().min(1).max(5),
-    stock: z.coerce.number().int().min(0),
-    licenseType: z.string().min(2),
+    stock: z.coerce.number().int().min(0).default(0),
+    licenseType: z.string().trim().min(2, 'License type is required'),
     imageUrl: z.string().url().or(z.literal('')).optional(),
     visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
     description: z.string().max(1000).optional().default(''),
     hidePrice: z.boolean().optional(),
     hideCart: z.boolean().optional(),
-    vendorId: z.string().optional(),
+    vendorId: z
+      .string()
+      .optional()
+      .transform((v) => (v && String(v).trim() ? String(v).trim() : undefined)),
     allowedCountries: countryCodeList,
     blockedCountries: countryCodeList,
   })
@@ -106,7 +113,8 @@ async function prepareProductPayload(body, { excludeProductId } = {}) {
   const parsed = productSchema.safeParse(body)
   if (!parsed.success) {
     const first = parsed.error.issues?.[0]
-    throw new Error(first?.message || 'Invalid product data')
+    const path = first?.path?.length ? `${first.path.join('.')}: ` : ''
+    throw new Error(`${path}${first?.message || 'Invalid product data'}`)
   }
   const payload = parsed.data
   if (payload.productType === 'bundle') {

@@ -206,21 +206,45 @@ export async function importLicenseKeys(productId, keys) {
   }
 }
 
+function countAssignedKeys(licenseKey) {
+  if (!licenseKey?.trim()) return 0
+  return licenseKey
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length
+}
+
 async function assignKeysForOrderItem(item, orderId) {
   const needed = Math.max(1, Number(item.quantity) || 1)
-  const keys = []
-  for (let i = 0; i < needed; i += 1) {
+  const already = countAssignedKeys(item.licenseKey)
+  const keys = item.licenseKey?.trim()
+    ? item.licenseKey
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : []
+
+  for (let i = already; i < needed; i += 1) {
     const key = await assignLicenseKey({
       productId: item.productId,
       variantId: item.variantId,
       orderId,
     })
     if (!key) {
-      return { complete: false, licenseKey: keys.length ? keys.join('\n') : null, missing: needed - keys.length }
+      return {
+        complete: false,
+        licenseKey: keys.length ? keys.join('\n') : null,
+        missing: needed - keys.length,
+      }
     }
     keys.push(key)
   }
-  return { complete: true, licenseKey: keys.join('\n'), missing: 0 }
+  return { complete: keys.length >= needed, licenseKey: keys.join('\n'), missing: 0 }
+}
+
+function itemHasAllKeys(item) {
+  const needed = Math.max(1, Number(item.quantity) || 1)
+  return countAssignedKeys(item.licenseKey) >= needed
 }
 
 /**
@@ -233,7 +257,7 @@ export async function deliverKeysForPaidOrder(order, { forceEmail = false } = {}
   let newlyAssigned = false
 
   for (const item of items) {
-    if (item.licenseKey?.trim()) continue
+    if (itemHasAllKeys(item)) continue
     const result = await assignKeysForOrderItem(item, order._id)
     if (result.licenseKey) {
       item.licenseKey = result.licenseKey
@@ -245,10 +269,10 @@ export async function deliverKeysForPaidOrder(order, { forceEmail = false } = {}
   }
 
   const refreshed = await OrderItem.find({ orderId: order._id })
-  allComplete = refreshed.every((item) => Boolean(item.licenseKey?.trim()))
+  allComplete = refreshed.every((item) => itemHasAllKeys(item))
   const primaryKey = refreshed.find((item) => item.licenseKey)?.licenseKey ?? null
 
-  order.licenseKey = primaryKey
+  order.licenseKey = primaryKey ? String(primaryKey).slice(0, 200) : null
   order.paymentStatus = 'paid'
 
   if (!allComplete) {
@@ -268,10 +292,7 @@ export async function deliverKeysForPaidOrder(order, { forceEmail = false } = {}
     }
   }
 
-  // All keys available — deliver and complete
-  order.orderStatus = 'completed'
-  await order.save()
-
+  // Keys ready — mark completed only after we attempt delivery
   let emailDelivered = Boolean(order.emailSent)
   if ((!order.emailSent || forceEmail) && primaryKey) {
     try {
@@ -287,7 +308,8 @@ export async function deliverKeysForPaidOrder(order, { forceEmail = false } = {}
           item.keySentAt = new Date()
           await item.save()
         }
-        await order.save()
+      } else if (emailResult.status === 'failed' || emailResult.status === 'logged') {
+        console.error('[license] email not sent:', emailResult.error || emailResult.status)
       }
     } catch (err) {
       console.error('[license] email delivery failed:', err.message)
@@ -300,6 +322,10 @@ export async function deliverKeysForPaidOrder(order, { forceEmail = false } = {}
       licenseKey: primaryKey,
     })
   }
+
+  // Completed once all keys are assigned (email may still be pending retry)
+  order.orderStatus = 'completed'
+  await order.save()
 
   return {
     delivered: true,
@@ -317,33 +343,44 @@ export async function deliverKeysForPaidOrder(order, { forceEmail = false } = {}
 
 /**
  * After keys are imported, try to auto-deliver older paid orders that are
- * still pending because the key pool was empty.
+ * still pending because the key pool was empty — and retry completed orders
+ * that never got the delivery email.
  */
-export async function processPendingKeyDeliveries({ limit = 50 } = {}) {
+export async function processPendingKeyDeliveries({ limit = 50, productId = null } = {}) {
   const pending = await Order.find({
     paymentStatus: 'paid',
-    orderStatus: { $in: ['pending', 'processing', 'on_hold'] },
+    $or: [
+      { orderStatus: { $in: ['pending', 'processing', 'on_hold'] } },
+      { orderStatus: 'completed', emailSent: { $ne: true } },
+    ],
   })
     .sort({ createdAt: 1 })
-    .limit(limit)
+    .limit(Math.max(limit * 3, 50))
 
   const results = {
-    checked: pending.length,
+    checked: 0,
     delivered: 0,
     stillWaiting: 0,
     failed: 0,
   }
 
   for (const order of pending) {
+    if (results.checked >= limit) break
     try {
       const items = await OrderItem.find({ orderId: order._id })
-      const needsKeys = items.some((item) => !item.licenseKey?.trim())
+      if (productId) {
+        const touchesProduct = items.some((item) => String(item.productId) === String(productId))
+        if (!touchesProduct) continue
+      }
+      results.checked += 1
+
+      const needsKeys = items.some((item) => !itemHasAllKeys(item))
       if (!needsKeys && order.emailSent && order.orderStatus === 'completed') {
         continue
       }
       if (!needsKeys && !order.emailSent) {
         const delivery = await deliverKeysForPaidOrder(order, { forceEmail: true })
-        if (delivery.delivered) results.delivered += 1
+        if (delivery.emailDelivered || delivery.delivered) results.delivered += 1
         else results.stillWaiting += 1
         continue
       }
@@ -356,7 +393,8 @@ export async function processPendingKeyDeliveries({ limit = 50 } = {}) {
       }
 
       const delivery = await deliverKeysForPaidOrder(order)
-      if (delivery.delivered) results.delivered += 1
+      if (delivery.delivered && delivery.emailDelivered) results.delivered += 1
+      else if (delivery.delivered) results.delivered += 1
       else results.stillWaiting += 1
     } catch {
       results.failed += 1
@@ -369,22 +407,31 @@ export async function processPendingKeyDeliveries({ limit = 50 } = {}) {
 export async function countOrdersAwaitingKeys() {
   const paidOrders = await Order.find({
     paymentStatus: 'paid',
-    orderStatus: { $in: ['pending', 'processing', 'on_hold'] },
-  }).select('_id')
+    $or: [
+      { orderStatus: { $in: ['pending', 'processing', 'on_hold'] } },
+      { orderStatus: 'completed', emailSent: { $ne: true } },
+    ],
+  }).select('_id emailSent orderStatus')
 
   if (!paidOrders.length) return 0
 
   const orderIds = paidOrders.map((o) => o._id)
-  const missing = await OrderItem.aggregate([
-    {
-      $match: {
-        orderId: { $in: orderIds },
-        $or: [{ licenseKey: null }, { licenseKey: '' }, { licenseKey: { $exists: false } }],
-      },
-    },
-    { $group: { _id: '$orderId' } },
-  ])
-  return missing.length
+  const items = await OrderItem.find({ orderId: { $in: orderIds } }).select('orderId quantity licenseKey')
+  const byOrder = new Map()
+  for (const item of items) {
+    const id = String(item.orderId)
+    if (!byOrder.has(id)) byOrder.set(id, [])
+    byOrder.get(id).push(item)
+  }
+
+  let waiting = 0
+  for (const order of paidOrders) {
+    const id = String(order._id)
+    const orderItems = byOrder.get(id) ?? []
+    const missingKeys = orderItems.some((item) => !itemHasAllKeys(item))
+    if (missingKeys || !order.emailSent) waiting += 1
+  }
+  return waiting
 }
 
 /** Kept for local seed/demo; production keys should come from Excel import. */
