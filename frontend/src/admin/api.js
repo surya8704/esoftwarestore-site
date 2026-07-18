@@ -1,5 +1,23 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
+function readApiErrorMessage(data, fallback = 'Request failed') {
+  if (!data || typeof data !== 'object') return fallback
+  if (typeof data.message === 'string' && data.message.trim()) return data.message
+  if (typeof data.error === 'string' && data.error.trim()) return data.error
+  if (data.error && typeof data.error === 'object') {
+    if (typeof data.error.message === 'string' && data.error.message.trim()) return data.error.message
+    if (typeof data.error.description === 'string' && data.error.description.trim()) return data.error.description
+  }
+  if (Array.isArray(data.message)) {
+    return data.message.map((item) => (typeof item === 'string' ? item : item?.message)).filter(Boolean).join('; ') || fallback
+  }
+  try {
+    return JSON.stringify(data)
+  } catch {
+    return fallback
+  }
+}
+
 export async function dashboardApi(path, options = {}) {
   const token = localStorage.getItem('dashboardToken')
   const hasBody = options.body !== undefined && options.body !== null && options.body !== ''
@@ -17,14 +35,15 @@ export async function dashboardApi(path, options = {}) {
   })
 
   const text = await response.text()
-  const data = text ? JSON.parse(text) : {}
+  let data = {}
+  try {
+    data = text ? JSON.parse(text) : {}
+  } catch {
+    if (!response.ok) throw new Error(text?.slice(0, 200) || 'Request failed')
+    throw new Error('Invalid response from server')
+  }
   if (!response.ok) {
-    const msg =
-      data.message ??
-      data.error?.message ??
-      (typeof data.error === 'string' ? data.error : null) ??
-      'Request failed'
-    throw new Error(msg)
+    throw new Error(readApiErrorMessage(data))
   }
   return data
 }

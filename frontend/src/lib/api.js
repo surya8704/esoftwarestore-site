@@ -23,6 +23,27 @@ export function getSessionId() {
   return id
 }
 
+function readApiErrorMessage(data, fallback = 'Request failed') {
+  if (!data || typeof data !== 'object') return fallback
+  if (typeof data.message === 'string' && data.message.trim()) return data.message
+  if (typeof data.error === 'string' && data.error.trim()) return data.error
+  if (data.error && typeof data.error === 'object') {
+    if (typeof data.error.message === 'string' && data.error.message.trim()) return data.error.message
+    if (typeof data.error.description === 'string' && data.error.description.trim()) return data.error.description
+  }
+  if (Array.isArray(data.message)) {
+    return data.message.map((item) => (typeof item === 'string' ? item : item?.message)).filter(Boolean).join('; ') || fallback
+  }
+  if (typeof data.statusCode === 'number' && typeof data.error === 'string') {
+    return data.error
+  }
+  try {
+    return JSON.stringify(data)
+  } catch {
+    return fallback
+  }
+}
+
 export async function api(path, options = {}) {
   const headers = {
     'X-Session-Id': getSessionId(),
@@ -43,11 +64,16 @@ export async function api(path, options = {}) {
 
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers })
   const text = await response.text()
-  const data = text ? JSON.parse(text) : {}
+  let data = {}
+  try {
+    data = text ? JSON.parse(text) : {}
+  } catch {
+    if (!response.ok) throw new Error(text?.slice(0, 200) || 'Request failed')
+    throw new Error('Invalid response from server')
+  }
 
   if (!response.ok) {
-    const message = data.message ?? data.error ?? 'Request failed'
-    throw new Error(message)
+    throw new Error(readApiErrorMessage(data))
   }
 
   return data
