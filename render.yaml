@@ -21,7 +21,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CLIENT_URL
-        value: https://frontend-henna-delta-45.vercel.app
+        value: https://www.esoftwarestore.com
       - key: API_PUBLIC_URL
         value: https://esoftwarestore-api.onrender.com
       - key: RAZORPAY_KEY_ID
@@ -33,7 +33,7 @@ services:
       - key: PAYU_MERCHANT_SALT
         sync: false
       - key: PAYU_ENV
-        value: test
+        value: production
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM

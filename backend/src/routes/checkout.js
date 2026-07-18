@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import Razorpay from 'razorpay'
 import { z } from 'zod'
-import { config, COUNTRY_PAYMENTS, CURRENCIES } from '../config.js'
+import { config, COUNTRY_PAYMENTS, CURRENCIES, assertLivePaymentGateway } from '../config.js'
 import { mapId } from '../db/client.js'
 import {
   Affiliate,
@@ -181,6 +181,11 @@ export async function checkoutRoutes(app) {
     let orderTotal = payable
 
     if (payable > 0 && payload.paymentMethod === 'razorpay') {
+      try {
+        assertLivePaymentGateway('razorpay')
+      } catch (error) {
+        throw app.httpErrors.badRequest(error.message)
+      }
       const razorpayOrder = await razorpay.orders.create({
         amount: Math.round(payable * 100),
         currency: orderCurrency || 'INR',
@@ -191,6 +196,11 @@ export async function checkoutRoutes(app) {
     }
 
     if (payable > 0 && payload.paymentMethod === 'payu') {
+      try {
+        assertLivePaymentGateway('payu')
+      } catch (error) {
+        throw app.httpErrors.badRequest(error.message)
+      }
       if (!config.payuMerchantKey || !config.payuMerchantSalt) {
         throw app.httpErrors.badRequest('PayU is not configured')
       }

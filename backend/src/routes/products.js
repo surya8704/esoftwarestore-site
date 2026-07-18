@@ -3,7 +3,7 @@ import { Product, ProductReview, ProductVariant, SupportVideo } from '../db/mode
 import { isProductVisible } from '../lib/utils.js'
 import { createPricingContext, resolveProductPriceFromContext, publicVolumeTiers } from '../services/pricing.js'
 import { detectRegion, getRegionForCountry, COUNTRY_REGION } from '../services/geo.js'
-import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES } from '../config.js'
+import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES, isPaymentsLiveMode } from '../config.js'
 import { resolveStoreProductImage } from '../lib/productImages.js'
 import { attachReviewSummary, mergeProductReviews } from '../lib/productReviews.js'
 import { attachBundleContents } from '../lib/bundles.js'
@@ -57,6 +57,7 @@ export async function productRoutes(app) {
     defaultCurrency: config.defaultCurrency,
     defaultLocale: config.defaultLocale,
     countryPayments: COUNTRY_PAYMENTS,
+    paymentsLiveMode: isPaymentsLiveMode(),
     cdnUrl: config.cdnUrl,
     clientUrl: config.clientUrl,
     googleClientId: config.googleClientId || null,

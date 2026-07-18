@@ -32,11 +32,11 @@ export const config = {
   mongoUrl:
     process.env.MONGO_URL ??
     (process.env.DATABASE_URL?.startsWith('mongodb') ? process.env.DATABASE_URL : 'mongodb://127.0.0.1:27017/esoftwarestore'),
-  razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? 'rzp_test_key',
-  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? 'rzp_test_secret',
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? '',
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
   payuMerchantKey: process.env.PAYU_MERCHANT_KEY ?? '',
   payuMerchantSalt: process.env.PAYU_MERCHANT_SALT ?? '',
-  payuEnv: process.env.PAYU_ENV ?? 'test',
+  payuEnv: (process.env.PAYU_ENV ?? 'production').toLowerCase() === 'test' ? 'test' : 'production',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
@@ -59,6 +59,43 @@ export const config = {
   defaultCountry: process.env.DEFAULT_COUNTRY ?? 'IN',
   defaultCurrency: process.env.DEFAULT_CURRENCY ?? 'INR',
   defaultLocale: process.env.DEFAULT_LOCALE ?? 'en',
+  nodeEnv: process.env.NODE_ENV ?? 'development',
+}
+
+/** True when Razorpay keys are live (rzp_live_…) and PayU is not on the test host. */
+export function isPaymentsLiveMode() {
+  const razorpayLive = String(config.razorpayKeyId || '').startsWith('rzp_live_')
+  const payuLive = config.payuEnv === 'production'
+  return razorpayLive && payuLive
+}
+
+export function assertLivePaymentGateway(method) {
+  const isProd =
+    config.nodeEnv === 'production' ||
+    /esoftwarestore\.com/i.test(config.clientUrl || '') ||
+    /onrender\.com/i.test(config.apiPublicUrl || '')
+
+  if (!isProd) return
+
+  if (method === 'razorpay') {
+    if (!config.razorpayKeyId || !config.razorpayKeySecret) {
+      throw new Error('Razorpay live keys are not configured. Set RAZORPAY_KEY_ID (rzp_live_…) and RAZORPAY_KEY_SECRET.')
+    }
+    if (config.razorpayKeyId.startsWith('rzp_test_')) {
+      throw new Error(
+        'Razorpay is still in test mode. Replace RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET with live keys (rzp_live_…) on the server.',
+      )
+    }
+  }
+
+  if (method === 'payu') {
+    if (config.payuEnv !== 'production') {
+      throw new Error('PayU is still in test mode. Set PAYU_ENV=production on the server.')
+    }
+    if (!config.payuMerchantKey || !config.payuMerchantSalt) {
+      throw new Error('PayU production merchant key/salt are not configured.')
+    }
+  }
 }
 
 export const CURRENCIES = {
