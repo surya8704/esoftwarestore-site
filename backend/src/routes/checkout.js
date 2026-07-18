@@ -186,13 +186,28 @@ export async function checkoutRoutes(app) {
       } catch (error) {
         throw app.httpErrors.badRequest(error.message)
       }
-      const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(payable * 100),
-        currency: orderCurrency || 'INR',
-        receipt: `es-${Date.now()}`,
-        notes: { customerEmail: payload.customerEmail },
-      })
-      razorpayOrderId = razorpayOrder.id
+      try {
+        const razorpayOrder = await razorpay.orders.create({
+          amount: Math.round(payable * 100),
+          currency: orderCurrency || 'INR',
+          receipt: `es-${Date.now()}`,
+          notes: { customerEmail: payload.customerEmail },
+        })
+        razorpayOrderId = razorpayOrder.id
+      } catch (error) {
+        const desc =
+          error?.error?.description ||
+          error?.error?.message ||
+          error?.message ||
+          'Razorpay order creation failed'
+        const text = String(desc)
+        if (/authentication failed|api key provided is invalid|invalid key/i.test(text)) {
+          throw app.httpErrors.badRequest(
+            'Razorpay authentication failed: Key ID and Key Secret on Render do not match (or are still test keys). In Razorpay Dashboard switch to Live Mode → Account & Settings → API Keys, copy both live values into RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET, save, and redeploy the API.',
+          )
+        }
+        throw app.httpErrors.badRequest(text)
+      }
     }
 
     if (payable > 0 && payload.paymentMethod === 'payu') {
