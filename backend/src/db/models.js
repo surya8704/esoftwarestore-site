@@ -166,6 +166,7 @@ const orderSchema = new mongoose.Schema({
   razorpayPaymentId: { type: String, maxlength: 120 },
   payuTxnId: { type: String, maxlength: 40 },
   payuPaymentId: { type: String, maxlength: 120 },
+  stripeSessionId: { type: String, maxlength: 120 },
   stripePaymentId: { type: String, maxlength: 120 },
   stripeChargeId: { type: String, maxlength: 120 },
   refundAmount: { type: Number, default: 0 },

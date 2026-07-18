@@ -38,6 +38,7 @@ export const config = {
   payuMerchantSalt: process.env.PAYU_MERCHANT_SALT ?? '',
   payuEnv: process.env.PAYU_ENV ?? 'test',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
   apiPublicUrl:
@@ -75,10 +76,8 @@ export const CURRENCIES = {
 
 export const LOCALES = ['en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl', 'ru', 'ar']
 
+/** Razorpay + PayU for India and international; wallet for logged-in INR balance. */
 export const COUNTRY_PAYMENTS = {
-  IN: ['razorpay', 'payu', 'upi', 'wallet'],
-  US: ['stripe', 'paypal', 'apple_pay'],
-  GB: ['stripe', 'paypal'],
-  DE: ['stripe', 'paypal', 'klarna'],
-  default: ['stripe', 'razorpay'],
+  IN: ['razorpay', 'payu', 'wallet'],
+  default: ['razorpay', 'payu'],
 }

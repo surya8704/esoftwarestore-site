@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, formatPrice, trackPage } from '../lib/api'
 import { CHECKOUT_COUNTRIES, emptyBilling, INDIAN_STATES } from '../lib/billing'
@@ -9,10 +9,10 @@ import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import SocialLoginButtons from '../components/SocialLoginButtons'
 
-const PAYMENT_METHODS = [
-  { id: 'razorpay', label: 'Razorpay', hint: 'UPI, cards & wallets' },
-  { id: 'payu', label: 'PayU', hint: 'UPI, cards & net banking', inrOnly: true },
-]
+const PAYMENT_METHOD_META = {
+  razorpay: { id: 'razorpay', label: 'Razorpay', hint: 'UPI, cards & wallets (incl. international cards)' },
+  payu: { id: 'payu', label: 'PayU', hint: 'UPI, cards & net banking (charged in INR)' },
+}
 
 function Field({ label, required, children, className = '' }) {
   return (
@@ -39,8 +39,18 @@ export default function CheckoutPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const showPayu = currency === 'INR' || billing.countryCode === 'IN'
-  const availablePaymentMethods = PAYMENT_METHODS.filter((method) => !method.inrOnly || showPayu)
+  const availablePaymentMethods = useMemo(() => {
+    const countryCode = billing.countryCode || country || 'IN'
+    const allowed =
+      config?.countryPayments?.[countryCode] ??
+      config?.countryPayments?.default ??
+      ['razorpay', 'payu']
+
+    return allowed
+      .filter((id) => PAYMENT_METHOD_META[id])
+      .map((id) => PAYMENT_METHOD_META[id])
+  }, [billing.countryCode, country, config])
+
   const dialCode = getDialCodeForCountry(billing.countryCode)
 
   useEffect(() => {
@@ -189,6 +199,10 @@ export default function CheckoutPage() {
       if (orderData.paymentMethod === 'payu' && orderData.payu) {
         submitPayuForm(orderData.payu.action, orderData.payu.params)
         return
+      }
+
+      if (orderData.paymentMethod !== 'razorpay') {
+        throw new Error('Selected payment method is not available. Please try again.')
       }
 
       const Razorpay = await loadRazorpayCheckout()
@@ -514,31 +528,37 @@ export default function CheckoutPage() {
 
           <section className="store-card space-y-4 p-6 md:p-8">
             <h2 className="text-lg font-semibold text-store-heading">Payment method</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {availablePaymentMethods.map((method) => (
-                <label
-                  key={method.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
-                    paymentMethod === method.id
-                      ? 'border-[#f97316] bg-store-primary-muted/40'
-                      : 'border-store hover:border-[#f97316]/40'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value={method.id}
-                    checked={paymentMethod === method.id}
-                    onChange={() => setPaymentMethod(method.id)}
-                    className="mt-1 text-[#f97316] focus:ring-[#f97316]"
-                  />
-                  <span>
-                    <span className="block font-semibold text-store-heading">{method.label}</span>
-                    <span className="text-sm text-store-muted">{method.hint}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
+            {availablePaymentMethods.length === 0 ? (
+              <p className="text-sm text-[#e11d48]">
+                No payment methods are available for your country yet. Contact support if this persists.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {availablePaymentMethods.map((method) => (
+                  <label
+                    key={method.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
+                      paymentMethod === method.id
+                        ? 'border-[#f97316] bg-store-primary-muted/40'
+                        : 'border-store hover:border-[#f97316]/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value={method.id}
+                      checked={paymentMethod === method.id}
+                      onChange={() => setPaymentMethod(method.id)}
+                      className="mt-1 text-[#f97316] focus:ring-[#f97316]"
+                    />
+                    <span>
+                      <span className="block font-semibold text-store-heading">{method.label}</span>
+                      <span className="text-sm text-store-muted">{method.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="store-card space-y-4 p-6 md:p-8">
@@ -582,7 +602,7 @@ export default function CheckoutPage() {
 
             <button
               type="submit"
-              disabled={loading || !cart?.items?.length || !termsAccepted}
+              disabled={loading || !cart?.items?.length || !termsAccepted || availablePaymentMethods.length === 0}
               className="btn-store-primary w-full py-4 disabled:opacity-50"
             >
               {loading ? 'Processing...' : `Place order & pay · ${countryLabel}`}

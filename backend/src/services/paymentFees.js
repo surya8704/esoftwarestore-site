@@ -1,5 +1,6 @@
 import Razorpay from 'razorpay'
 import { config } from '../config.js'
+import { fromStripeAmount } from './stripe.js'
 
 const GATEWAY_LABELS = {
   razorpay: 'Razorpay',
@@ -182,10 +183,12 @@ async function fetchStripeFees(chargeId, paymentIntentId, fallbackAmount) {
     if (!response.ok) return estimateFees(fallbackAmount, 'stripe')
 
     const charge = data.object === 'charge' ? data : data.latest_charge
+    const currency = (charge?.currency || data.currency || 'usd').toUpperCase()
     const bt = typeof charge?.balance_transaction === 'object' ? charge.balance_transaction : null
-    const amountPaid = roundMoney((charge?.amount ?? data.amount ?? 0) / 100) || fallbackAmount
-    const gatewayFee = roundMoney((bt?.fee ?? 0) / 100)
-    const netPayout = roundMoney((bt?.net ?? charge?.amount ?? 0) / 100) || roundMoney(amountPaid - gatewayFee)
+    const amountPaid = roundMoney(fromStripeAmount(charge?.amount ?? data.amount ?? 0, currency)) || fallbackAmount
+    const gatewayFee = roundMoney(fromStripeAmount(bt?.fee ?? 0, currency))
+    const netPayout =
+      roundMoney(fromStripeAmount(bt?.net ?? charge?.amount ?? 0, currency)) || roundMoney(amountPaid - gatewayFee)
 
     return {
       amountPaid,
@@ -194,7 +197,7 @@ async function fetchStripeFees(chargeId, paymentIntentId, fallbackAmount) {
       netPayout,
       feeProvider: 'Stripe',
       feeSource: bt?.fee != null ? 'api' : 'estimated',
-      gatewayPaymentStatus: charge?.status ?? 'paid',
+      gatewayPaymentStatus: charge?.status === 'succeeded' ? 'succeeded' : (charge?.status ?? 'paid'),
     }
   } catch {
     return estimateFees(fallbackAmount, 'stripe')

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import Razorpay from 'razorpay'
 import { z } from 'zod'
-import { config, COUNTRY_PAYMENTS } from '../config.js'
+import { config, COUNTRY_PAYMENTS, CURRENCIES } from '../config.js'
 import { mapId } from '../db/client.js'
 import {
   Affiliate,
@@ -33,6 +33,18 @@ function normalizePayuStatus(status) {
   if (value === 'success') return 'success'
   if (value === 'failure' || value === 'failed') return 'failed'
   return 'cancelled'
+}
+
+/** PayU India settles in INR — convert catalog currency using site rates. */
+function amountInInr(amount, currency) {
+  const cur = String(currency || 'INR').toUpperCase()
+  const value = Number(amount) || 0
+  if (cur === 'INR') return Math.round(value * 100) / 100
+  const rate = CURRENCIES[cur]?.rate
+  if (!rate || rate <= 0) {
+    throw new Error(`Cannot convert ${cur} to INR for PayU`)
+  }
+  return Math.round((value / rate) * 100) / 100
 }
 
 export async function checkoutRoutes(app) {
@@ -165,10 +177,13 @@ export async function checkoutRoutes(app) {
 
     let razorpayOrderId = null
     let payuTxnId = null
+    let orderCurrency = cart.currency
+    let orderTotal = payable
+
     if (payable > 0 && payload.paymentMethod === 'razorpay') {
       const razorpayOrder = await razorpay.orders.create({
-        amount: payable * 100,
-        currency: cart.currency === 'INR' ? 'INR' : 'USD',
+        amount: Math.round(payable * 100),
+        currency: orderCurrency || 'INR',
         receipt: `es-${Date.now()}`,
         notes: { customerEmail: payload.customerEmail },
       })
@@ -176,11 +191,17 @@ export async function checkoutRoutes(app) {
     }
 
     if (payable > 0 && payload.paymentMethod === 'payu') {
-      if (cart.currency !== 'INR') {
-        throw app.httpErrors.badRequest('PayU is only available for INR payments')
-      }
       if (!config.payuMerchantKey || !config.payuMerchantSalt) {
         throw app.httpErrors.badRequest('PayU is not configured')
+      }
+      // PayU (India) charges in INR; convert international cart totals
+      if (cart.currency !== 'INR') {
+        try {
+          orderTotal = amountInInr(payable, cart.currency)
+          orderCurrency = 'INR'
+        } catch (error) {
+          throw app.httpErrors.badRequest(error.message)
+        }
       }
       payuTxnId = generatePayuTxnId()
     }
@@ -193,10 +214,10 @@ export async function checkoutRoutes(app) {
       customerWhatsapp,
       phoneDialCode,
       countryCode: payload.billing.countryCode,
-      currency: cart.currency,
+      currency: orderCurrency,
       subtotal,
       discount,
-      total: payable,
+      total: orderTotal,
       couponCode: cart.couponCode,
       paymentStatus: payable === 0 ? 'paid' : 'created',
       paymentMethod: payload.paymentMethod,
@@ -205,7 +226,7 @@ export async function checkoutRoutes(app) {
       confirmationCode,
       affiliateId,
       productId: lineItems[0]?.productId,
-      amount: payable,
+      amount: orderTotal,
       orderNotes: payload.billing.orderNotes,
       billing: {
         firstName: payload.billing.firstName,
@@ -254,23 +275,23 @@ export async function checkoutRoutes(app) {
     }
 
     const response = {
-      order: { id: order._id.toString(), total: payable, paymentStatus: payable === 0 ? 'paid' : 'created', confirmationCode },
+      order: { id: order._id.toString(), total: orderTotal, paymentStatus: payable === 0 ? 'paid' : 'created', confirmationCode },
       paymentMethod: payload.paymentMethod,
       razorpayOrderId,
       keyId: config.razorpayKeyId,
-      currency: cart.currency,
-      amount: payable,
+      currency: orderCurrency,
+      amount: orderTotal,
       walletApplied,
     }
 
-    if (payload.paymentMethod === 'payu' && payable > 0) {
+    if (payload.paymentMethod === 'payu' && orderTotal > 0) {
       const productinfo = lineItems.map((item) => item.product.name).join(', ')
       const callbackUrl = `${config.apiPublicUrl}/api/checkout/payu/callback`
       response.payu = {
         action: getPayuPaymentUrl(),
         params: buildPayuPaymentParams({
           txnid: payuTxnId,
-          amount: payable,
+          amount: orderTotal,
           productinfo,
           firstname: payload.billing.firstName,
           email: payload.customerEmail,

@@ -11,7 +11,7 @@ import { deliverKeysForPaidOrder } from './license.js'
 import { markCartRecovered } from './marketing.js'
 import { captureOrderPaymentFees } from './paymentFees.js'
 
-export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId } = {}) {
+export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId, stripePaymentId, stripeChargeId } = {}) {
   // Already paid — if keys still missing, try again; otherwise return snapshot
   if (order.paymentStatus === 'paid') {
     const items = await OrderItem.find({ orderId: order._id })
@@ -34,6 +34,8 @@ export async function fulfillPaidOrder(order, { razorpayPaymentId, payuPaymentId
 
   if (razorpayPaymentId) order.razorpayPaymentId = razorpayPaymentId
   if (payuPaymentId) order.payuPaymentId = payuPaymentId
+  if (stripePaymentId) order.stripePaymentId = stripePaymentId
+  if (stripeChargeId) order.stripeChargeId = stripeChargeId
   order.paymentStatus = 'paid'
   order.orderStatus = 'pending'
   order.emailSent = false

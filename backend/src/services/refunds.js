@@ -3,6 +3,7 @@ import Razorpay from 'razorpay'
 import { config } from '../config.js'
 import { User, WalletTransaction } from '../db/models.js'
 import { isGatewayPaymentConfirmed } from './paymentFees.js'
+import { toStripeAmount } from './stripe.js'
 
 function roundMoney(value) {
   return Math.round(Number(value ?? 0) * 100) / 100
@@ -171,7 +172,7 @@ async function refundViaStripe(order, amount) {
   const params = new URLSearchParams()
   if (chargeId) params.set('charge', chargeId)
   else params.set('payment_intent', paymentIntentId)
-  params.set('amount', String(Math.round(amount * 100)))
+  params.set('amount', String(toStripeAmount(amount, order.currency ?? 'USD')))
 
   const response = await fetch('https://api.stripe.com/v1/refunds', {
     method: 'POST',
