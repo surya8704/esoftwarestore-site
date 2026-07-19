@@ -18,9 +18,15 @@ export function isProductVisible(product, countryCode) {
   return product.active !== false && product.active !== 0
 }
 
-export function convertPrice(amountInr, currency, currencies) {
-  const rate = currencies[currency]?.rate ?? 1
-  return Math.round(amountInr * rate)
+export function convertPrice(amountInBase, currency, currencies, baseCurrency = 'USD') {
+  const from = String(baseCurrency || 'USD').toUpperCase()
+  const to = String(currency || baseCurrency || 'USD').toUpperCase()
+  const value = Number(amountInBase) || 0
+  if (from === to) return Math.round(value)
+  const fromRate = currencies[from]?.rate ?? 1
+  const toRate = currencies[to]?.rate ?? 1
+  if (!fromRate) return Math.round(value * toRate)
+  return Math.round((value / fromRate) * toRate)
 }
 
 export function formatMoney(amount, currency, currencies) {

@@ -166,10 +166,17 @@ export default function ProductsTab({
       const slug = slugify(form.slug) || slugify(name)
       if (!slug || slug.length < 2) throw new Error('Enter a valid slug (e.g. windows-11-pro)')
 
+      const price = Math.round(Number(form.price) * 100) / 100
+      const originalPrice = Math.round(Number(form.originalPrice) * 100) / 100
+      if (!Number.isFinite(price) || price <= 0) throw new Error('Enter a valid USD price greater than 0')
+      if (!Number.isFinite(originalPrice) || originalPrice <= 0) {
+        throw new Error('Enter a valid USD original price greater than 0')
+      }
+
       const body = {
-        ...form,
         name,
         slug,
+        category: String(form.category || '').trim() || 'Windows',
         productType: form.productType ?? 'standard',
         bundleItems:
           (form.productType ?? 'standard') === 'bundle'
@@ -178,18 +185,17 @@ export default function ProductsTab({
                 quantity: Number(item.quantity) || 1,
               }))
             : [],
-        price: Math.round(Number(form.price)),
-        originalPrice: Math.round(Number(form.originalPrice)),
-        rating: Number(form.rating),
+        price,
+        originalPrice,
+        rating: Number(form.rating) || 4.8,
         stock: Math.max(0, Math.floor(Number(form.stock) || 0)),
-        vendorId: form.vendorId || undefined,
+        licenseType: String(form.licenseType || '').trim() || 'Lifetime',
         imageUrl: form.imageUrl || '',
+        visualAccent: form.visualAccent || 'from-sky-500 to-cyan-400',
+        description: form.description || '',
+        vendorId: form.vendorId || undefined,
         allowedCountries: form.allowedCountries ?? [],
         blockedCountries: form.blockedCountries ?? [],
-      }
-      if (!Number.isFinite(body.price) || body.price < 1) throw new Error('Enter a valid price greater than 0')
-      if (!Number.isFinite(body.originalPrice) || body.originalPrice < 1) {
-        throw new Error('Enter a valid original price greater than 0')
       }
 
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
@@ -433,7 +439,12 @@ export default function ProductsTab({
 
         {[
           ['name', 'Name'], ['slug', 'Slug'], ['category', 'Category'],
-          ...(canEditPrices ? [['price', 'Bundle / sale price'], ['originalPrice', 'Original price (show as strike-through)']] : []),
+          ...(canEditPrices
+            ? [
+                ['price', 'Sale price (USD)'],
+                ['originalPrice', 'Original price USD (strike-through)'],
+              ]
+            : []),
           ['stock', 'Stock (display)'],
           ['licenseType', 'License type'], ['rating', 'Rating'],
         ].map(([key, label]) => (

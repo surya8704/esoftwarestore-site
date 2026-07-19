@@ -69,7 +69,7 @@ export default function RegionalPricesEditor({
             Regional prices (this product only)
           </p>
           <p className="mt-0.5 text-xs text-emerald-900/70 dark:text-emerald-200/70">
-            Set a local sale price per country for this product. Leave blank to use the base INR price with currency conversion.
+            Set a local sale price per country for this product. Leave blank to use the base USD catalog price with currency conversion.
           </p>
         </div>
         <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">

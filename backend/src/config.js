@@ -56,9 +56,11 @@ export const config = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
   facebookAppId: process.env.FACEBOOK_APP_ID ?? '',
   facebookAppSecret: process.env.FACEBOOK_APP_SECRET ?? '',
-  defaultCountry: process.env.DEFAULT_COUNTRY ?? 'IN',
-  defaultCurrency: process.env.DEFAULT_CURRENCY ?? 'INR',
+  defaultCountry: process.env.DEFAULT_COUNTRY ?? 'US',
+  defaultCurrency: process.env.DEFAULT_CURRENCY ?? 'USD',
   defaultLocale: process.env.DEFAULT_LOCALE ?? 'en',
+  /** Catalog product.price is stored in this currency (admin base currency). */
+  catalogBaseCurrency: (process.env.CATALOG_BASE_CURRENCY || process.env.DEFAULT_CURRENCY || 'USD').toUpperCase(),
   nodeEnv: process.env.NODE_ENV ?? 'development',
 }
 

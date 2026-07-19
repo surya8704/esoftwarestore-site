@@ -109,7 +109,7 @@ export default function RegionsTab() {
       const priceCount = result.regionalPrices?.length ?? 0
       setStatus(
         `Saved for ${result.product.name} only` +
-          (priceCount ? ` · ${priceCount} regional price${priceCount === 1 ? '' : 's'}` : ' · base INR + FX elsewhere'),
+          (priceCount ? ` · ${priceCount} regional price${priceCount === 1 ? '' : 's'}` : ' · base USD + FX elsewhere'),
       )
     } catch (err) {
       setStatus(err.message)

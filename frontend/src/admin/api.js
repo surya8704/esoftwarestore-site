@@ -82,8 +82,8 @@ export async function uploadProductLicenseKeys(productId, file) {
   return data
 }
 
-export function formatMoney(amount, currency = 'INR') {
-  const symbols = { INR: '₹', USD: '$', EUR: '€', GBP: '£' }
+export function formatMoney(amount, currency = 'USD') {
+  const symbols = { INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', CAD: 'C$', AUD: 'A$' }
   const symbol = symbols[currency] ?? `${currency} `
   return `${symbol}${Number(amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
@@ -94,8 +94,8 @@ export const emptyProductForm = {
   category: 'Windows',
   productType: 'standard',
   bundleItems: [],
-  price: 1999,
-  originalPrice: 4999,
+  price: 29,
+  originalPrice: 79,
   rating: 4.8,
   stock: 10,
   licenseType: 'Lifetime',

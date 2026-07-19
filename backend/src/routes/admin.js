@@ -619,7 +619,7 @@ export async function adminRoutes(app) {
       productName: product.name,
       basePrice: Number(product.price),
       originalPrice: Number(product.originalPrice),
-      currency: 'INR',
+      currency: 'USD',
       regionalPrices,
     }
   })

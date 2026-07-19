@@ -55,6 +55,7 @@ export async function productRoutes(app) {
     countryRegions: COUNTRY_REGION,
     defaultCountry: config.defaultCountry,
     defaultCurrency: config.defaultCurrency,
+    catalogBaseCurrency: config.catalogBaseCurrency || 'USD',
     defaultLocale: config.defaultLocale,
     countryPayments: COUNTRY_PAYMENTS,
     paymentsLiveMode: isPaymentsLiveMode(),

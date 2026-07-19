@@ -1,10 +1,10 @@
 import { config, CURRENCIES } from '../config.js'
 import { convertPrice } from '../lib/utils.js'
 
-export function buildGoogleShoppingFeed(products, { currency = 'INR', country = 'IN' } = {}) {
+export function buildGoogleShoppingFeed(products, { currency = config.catalogBaseCurrency || 'USD', country = 'US' } = {}) {
   const items = products
     .map((product) => {
-      const price = convertPrice(product.price, currency, CURRENCIES)
+      const price = convertPrice(product.price, currency, CURRENCIES, config.catalogBaseCurrency || 'USD')
       return `
     <item>
       <g:id>${product.id}</g:id>
@@ -32,14 +32,14 @@ export function buildGoogleShoppingFeed(products, { currency = 'INR', country = 
 </rss>`
 }
 
-export function buildBingShoppingFeed(products, { currency = 'INR' } = {}) {
+export function buildBingShoppingFeed(products, { currency = config.catalogBaseCurrency || 'USD' } = {}) {
   return buildGoogleShoppingFeed(products, { currency })
 }
 
-export function buildYandexFeed(products, { currency = 'INR' } = {}) {
+export function buildYandexFeed(products, { currency = config.catalogBaseCurrency || 'USD' } = {}) {
   const offers = products
     .map((product) => {
-      const price = convertPrice(product.price, currency, CURRENCIES)
+      const price = convertPrice(product.price, currency, CURRENCIES, config.catalogBaseCurrency || 'USD')
       return `
       <offer id="${product.id}" available="${product.stock > 0}">
         <name>${product.name}</name>

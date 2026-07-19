@@ -41,9 +41,11 @@ services:
       - key: RESEND_SANDBOX
         value: "false"
       - key: DEFAULT_COUNTRY
-        value: IN
+        value: US
       - key: DEFAULT_CURRENCY
-        value: INR
+        value: USD
+      - key: CATALOG_BASE_CURRENCY
+        value: USD
       - key: DEFAULT_LOCALE
         value: en
       - key: GOOGLE_CLIENT_ID

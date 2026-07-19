@@ -1,6 +1,6 @@
 import { Coupon, PricingRule, ProductVariant } from '../db/models.js'
 import { convertPrice, parseJsonList } from '../lib/utils.js'
-import { CURRENCIES } from '../config.js'
+import { config, CURRENCIES } from '../config.js'
 import { applyVolumeDiscount } from '../lib/volumeTiers.js'
 import { getVariant } from './license.js'
 
@@ -9,8 +9,8 @@ export { VOLUME_DISCOUNT_TIERS, getVolumeDiscountPercent, publicVolumeTiers } fr
 
 /** Convert an amount from one catalog currency to another using INR-anchored rates. */
 export function convertCurrencyAmount(amount, fromCurrency, toCurrency, currencies = CURRENCIES) {
-  const from = String(fromCurrency || 'INR').toUpperCase()
-  const to = String(toCurrency || 'INR').toUpperCase()
+  const from = String(fromCurrency || config.catalogBaseCurrency || 'USD').toUpperCase()
+  const to = String(toCurrency || config.catalogBaseCurrency || 'USD').toUpperCase()
   const value = Number(amount) || 0
   if (from === to) return Math.round(value)
   const fromRate = currencies[from]?.rate ?? 1
@@ -46,15 +46,16 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     ? productVariants.find((v) => String(v._id) === String(variantId))
     : null
 
-  let basePriceInr = variant?.price ?? product.price
+  let basePrice = variant?.price ?? product.price
   const rules = context?.rules ?? []
   const matching = matchRules(rules, { product, countryCode, variantId, quantity })
   const matched = matching[0]
-  const targetCurrency = currency || 'INR'
+  const catalogBase = config.catalogBaseCurrency || 'USD'
+  const targetCurrency = currency || catalogBase
 
   // Regional / rule price overrides are stored in the rule's currency (often the region's local currency).
   if (matched?.priceOverride != null && Number(matched.priceOverride) > 0) {
-    const ruleCurrency = matched.currency || 'INR'
+    const ruleCurrency = matched.currency || catalogBase
     const converted = convertCurrencyAmount(matched.priceOverride, ruleCurrency, targetCurrency)
     const volume = applyVolumeDiscount(converted, quantity)
     return {
@@ -73,9 +74,9 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     .sort((a, b) => a.tierMinQty - b.tierMinQty)
     .reverse()
     .find((item) => quantity >= item.tierMinQty)
-  if (tier) basePriceInr = tier.price
+  if (tier) basePrice = tier.price
 
-  const converted = convertPrice(basePriceInr, targetCurrency, CURRENCIES)
+  const converted = convertPrice(basePrice, targetCurrency, CURRENCIES, catalogBase)
   const volume = applyVolumeDiscount(converted, quantity)
 
   return {

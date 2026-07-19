@@ -25,12 +25,19 @@ const productSchema = z
     category: z.string().trim().min(2, 'Category is required'),
     productType: z.enum(['standard', 'bundle']).default('standard'),
     bundleItems: z.array(bundleItemSchema).optional().default([]),
-    price: z.coerce.number().positive('Price must be greater than 0').transform((n) => Math.round(n)),
-    originalPrice: z.coerce.number().positive('Original price must be greater than 0').transform((n) => Math.round(n)),
+    price: z.coerce.number().positive('Price must be greater than 0').transform((n) => Math.round(n * 100) / 100),
+    originalPrice: z.coerce.number().positive('Original price must be greater than 0').transform((n) => Math.round(n * 100) / 100),
     rating: z.coerce.number().min(1).max(5),
     stock: z.coerce.number().int().min(0).default(0),
     licenseType: z.string().trim().min(2, 'License type is required'),
-    imageUrl: z.string().url().or(z.literal('')).optional(),
+    imageUrl: z
+      .string()
+      .max(500)
+      .optional()
+      .transform((v) => (v == null ? '' : String(v).trim()))
+      .refine((v) => !v || v.startsWith('/') || /^https?:\/\//i.test(v), {
+        message: 'Image URL must be empty, a site path, or a full http(s) URL',
+      }),
     visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
     description: z.string().max(1000).optional().default(''),
     hidePrice: z.boolean().optional(),
