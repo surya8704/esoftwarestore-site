@@ -14,6 +14,7 @@ import {
   Package,
   Receipt,
   ShoppingBag,
+  BadgeCheck,
   Store,
   UserCircle,
   Users,
@@ -35,6 +36,7 @@ import ReportsTab from './tabs/ReportsTab'
 import RegionsTab from './tabs/RegionsTab'
 import AnnouncementsTab from './tabs/AnnouncementsTab'
 import ReviewsTab from './tabs/ReviewsTab'
+import TrustBadgeTab from './tabs/TrustBadgeTab'
 import ThemeToggle from '../components/ThemeToggle'
 import { defaultVendorPermissions, normalizeVendorPermissions } from './vendorAccess'
 
@@ -45,6 +47,7 @@ const ADMIN_TABS = [
   { id: 'products', label: 'Products', icon: Package },
   { id: 'regions', label: 'Regions', icon: Globe2 },
   { id: 'reviews', label: 'Reviews', icon: MessageSquareQuote },
+  { id: 'trust-badge', label: 'Trust Badge', icon: BadgeCheck },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
   { id: 'orders', label: 'Orders', icon: ShoppingBag },
   { id: 'customers', label: 'Customers', icon: UserCircle },
@@ -248,6 +251,7 @@ export default function AdminDashboard() {
           ) : null}
           {tab === 'regions' && isAdmin ? <RegionsTab /> : null}
           {tab === 'reviews' && isAdmin ? <ReviewsTab /> : null}
+          {tab === 'trust-badge' && isAdmin ? <TrustBadgeTab /> : null}
           {tab === 'announcements' && isAdmin ? <AnnouncementsTab /> : null}
           {tab === 'orders' ? (
             <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} vendorPermissions={vendorPermissions} />

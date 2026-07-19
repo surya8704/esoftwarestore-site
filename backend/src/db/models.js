@@ -379,6 +379,26 @@ const productReviewSchema = new mongoose.Schema({
 })
 productReviewSchema.index({ productId: 1, active: 1, createdAt: -1 })
 
+const storeSettingsSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true, default: 'default', maxlength: 40 },
+  trustBadge: {
+    enabled: { type: Boolean, default: true },
+    title: { type: String, maxlength: 40, default: 'BEST SERVICE' },
+    rating: { type: Number, default: 4.9 },
+    baselineReviews: { type: Number, default: 1000 },
+    dailyGrowthMin: { type: Number, default: 3 },
+    dailyGrowthMax: { type: Number, default: 9 },
+    growthStartDate: { type: String, maxlength: 10, default: '2026-01-01' },
+    tagline: { type: String, maxlength: 80, default: 'Trusted by thousands of buyers' },
+    style: { type: String, maxlength: 40, default: 'simple' },
+    showOnHome: { type: Boolean, default: true },
+    showOnProduct: { type: Boolean, default: true },
+    showOnCart: { type: Boolean, default: true },
+  },
+  createdAt: { type: Date, default: Date.now, required: true },
+  updatedAt: { type: Date, default: Date.now },
+})
+
 export const User = mongoose.model('User', userSchema)
 export const Vendor = mongoose.model('Vendor', vendorSchema)
 export const VendorPayout = mongoose.model('VendorPayout', vendorPayoutSchema)
@@ -404,4 +424,5 @@ export const SitePage = mongoose.model('SitePage', sitePageSchema)
 export const Guide = mongoose.model('Guide', guideSchema)
 export const Announcement = mongoose.model('Announcement', announcementSchema)
 export const ProductReview = mongoose.model('ProductReview', productReviewSchema)
+export const StoreSettings = mongoose.model('StoreSettings', storeSettingsSchema)
 

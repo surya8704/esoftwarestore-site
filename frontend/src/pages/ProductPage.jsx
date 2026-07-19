@@ -11,6 +11,7 @@ import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
 import ProductImage from '../components/ProductImage'
 import ProductReviews, { ProductRatingBadge } from '../components/ProductReviews'
+import TrustBadge from '../components/TrustBadge'
 
 const TABS = [
   { id: 'description', label: 'Description' },
@@ -345,6 +346,9 @@ export default function ProductPage() {
                 <Heart size={16} />
               </button>
             </div>
+            <div className="mt-3 hidden lg:block">
+              <TrustBadge placement="product" />
+            </div>
           </div>
         </div>
 
@@ -439,28 +443,31 @@ export default function ProductPage() {
       </div>
 
       <div className="product-sticky-bar lg:hidden">
-        <div className="store-container flex items-center gap-3 p-0">
-          <div className="min-w-0 flex-1">
-            {!product.hidePrice ? (
-              <p className="truncate text-lg font-extrabold text-[#f97316]">
-                {formatPrice(price, product.currency ?? currency)}
-              </p>
+        <div className="store-container space-y-2 p-0">
+          <TrustBadge placement="product" size="compact" />
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              {!product.hidePrice ? (
+                <p className="truncate text-lg font-extrabold text-[#f97316]">
+                  {formatPrice(price, product.currency ?? currency)}
+                </p>
+              ) : null}
+              <p className="truncate text-xs text-store-muted">{product.name}</p>
+            </div>
+            {!product.hideCart ? (
+              <button
+                type="button"
+                onClick={addWithQty}
+                className="btn-store-outline min-h-[44px] shrink-0 px-4"
+                aria-label="Add to cart"
+              >
+                <ShoppingCart size={18} />
+              </button>
             ) : null}
-            <p className="truncate text-xs text-store-muted">{product.name}</p>
-          </div>
-          {!product.hideCart ? (
-            <button
-              type="button"
-              onClick={addWithQty}
-              className="btn-store-outline min-h-[44px] shrink-0 px-4"
-              aria-label="Add to cart"
-            >
-              <ShoppingCart size={18} />
+            <button type="button" onClick={buyNow} className="btn-store-primary min-h-[44px] shrink-0 px-5">
+              Buy now
             </button>
-          ) : null}
-          <button type="button" onClick={buyNow} className="btn-store-primary min-h-[44px] shrink-0 px-5">
-            Buy now
-          </button>
+          </div>
         </div>
       </div>
     </>

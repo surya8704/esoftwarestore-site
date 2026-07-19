@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { formatPrice } from '../lib/api'
 import ProductImage from './ProductImage'
+import TrustBadge from './TrustBadge'
 
 export default function CartDrawer({ open, onClose, cart, currency, onRemove, onUpdateQuantity }) {
   const [removingId, setRemovingId] = useState(null)
@@ -134,6 +135,7 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove, on
               <span className="font-medium text-store-muted">Subtotal</span>
               <span className="font-extrabold text-[#f97316]">{formatPrice(total, currency)}</span>
             </div>
+            <TrustBadge placement="cart" size="compact" className="mb-3 w-full max-w-none [&_.trust-badge-simple-inner]:w-full" />
             <Link to="/checkout" onClick={onClose} className="btn-store-primary w-full">
               Proceed to checkout
             </Link>

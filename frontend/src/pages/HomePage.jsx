@@ -11,6 +11,7 @@ import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
 import ProductPagination from '../components/ProductPagination'
 import QuickViewModal from '../components/QuickViewModal'
+import TrustBadge from '../components/TrustBadge'
 
 const ALL_CATEGORIES = 'All'
 
@@ -170,7 +171,10 @@ export default function HomePage() {
                   {t('browseCatalog')}
                 </a>
               </div>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-4 [&_.trust-badge--simple]:border-white/25 [&_.trust-badge--simple]:bg-white/10 [&_.trust-badge-score]:text-white [&_.trust-badge-reviews]:text-white/80 [&_.trust-badge-tagline]:text-white/70 [&_.trust-star-off]:text-white/35">
+                <TrustBadge placement="home" />
+              </div>
+              <div className="mt-6 flex flex-wrap gap-3">
                 <span className="trust-pill">
                   <Zap size={14} className="text-[#fbbf24]" /> Instant email delivery
                 </span>

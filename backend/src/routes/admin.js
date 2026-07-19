@@ -43,6 +43,11 @@ import { buildEarningsReport } from '../services/reports.js'
 import { convertViaInr, fetchRatesToInr } from '../services/fxRates.js'
 import { config } from '../config.js'
 import {
+  getAdminTrustBadgeSettings,
+  TRUST_BADGE_STYLES,
+  updateTrustBadgeSettings,
+} from '../services/storeSettings.js'
+import {
   listProductRegionalPrices,
   syncProductRegionalPrices,
 } from '../services/pricing.js'
@@ -185,6 +190,32 @@ export async function adminRoutes(app) {
       countryCode: query.country || 'ALL',
       groupBy: query.groupBy || 'day',
     })
+  })
+
+  app.get('/api/admin/settings/trust-badge', { preHandler: [app.requireAdmin] }, async () => {
+    return getAdminTrustBadgeSettings()
+  })
+
+  app.put('/api/admin/settings/trust-badge', { preHandler: [app.requireAdmin] }, async (request) => {
+    const schema = z.object({
+      enabled: z.boolean().optional(),
+      title: z.string().trim().max(40).optional(),
+      rating: z.coerce.number().min(1).max(5).optional(),
+      baselineReviews: z.coerce.number().int().min(0).max(5_000_000).optional(),
+      dailyGrowthMin: z.coerce.number().int().min(0).max(500).optional(),
+      dailyGrowthMax: z.coerce.number().int().min(0).max(500).optional(),
+      growthStartDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      tagline: z.string().trim().max(80).optional(),
+      style: z
+        .enum(['simple', 'shield-gold', 'circular-gold', 'shield-silver', 'hex-dark', 'octagon-green', 'ribbon-gold'])
+        .optional(),
+      showOnHome: z.boolean().optional(),
+      showOnProduct: z.boolean().optional(),
+      showOnCart: z.boolean().optional(),
+    })
+    const payload = schema.parse(request.body ?? {})
+    const trustBadge = await updateTrustBadgeSettings(payload)
+    return { trustBadge, styles: TRUST_BADGE_STYLES }
   })
 
   app.get('/api/admin/users', { preHandler: [app.requireAdmin] }, async () => {

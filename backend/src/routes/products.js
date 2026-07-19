@@ -7,6 +7,7 @@ import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES, isPaymentsLiveMode } fro
 import { resolveStoreProductImage } from '../lib/productImages.js'
 import { attachReviewSummary, mergeProductReviews } from '../lib/productReviews.js'
 import { attachBundleContents } from '../lib/bundles.js'
+import { getPublicTrustBadgeSettings } from '../services/storeSettings.js'
 
 const normalizeProduct = (product) => {
   const p = mapId(product)
@@ -52,24 +53,33 @@ function enrichProduct(product, context, country, currency) {
 }
 
 export async function productRoutes(app) {
-  app.get('/api/config', async () => ({
-    currencies: CURRENCIES,
-    locales: LOCALES,
-    countryRegions: COUNTRY_REGION,
-    defaultCountry: config.defaultCountry,
-    defaultCurrency: config.defaultCurrency,
-    catalogBaseCurrency: config.catalogBaseCurrency || 'USD',
-    defaultLocale: config.defaultLocale,
-    countryPayments: COUNTRY_PAYMENTS,
-    paymentsLiveMode: isPaymentsLiveMode(),
-    cdnUrl: config.cdnUrl,
-    clientUrl: config.clientUrl,
-    googleClientId: config.googleClientId || null,
-    googleLoginEnabled: Boolean(config.googleClientId),
-    facebookAppId: config.facebookAppId || null,
-    facebookLoginEnabled: Boolean(config.facebookAppId && config.facebookAppSecret),
-    volumeDiscountTiers: publicVolumeTiers(),
-  }))
+  app.get('/api/config', async () => {
+    let trustBadge = null
+    try {
+      trustBadge = await getPublicTrustBadgeSettings()
+    } catch (err) {
+      console.warn('[config] trust badge unavailable:', err.message)
+    }
+    return {
+      currencies: CURRENCIES,
+      locales: LOCALES,
+      countryRegions: COUNTRY_REGION,
+      defaultCountry: config.defaultCountry,
+      defaultCurrency: config.defaultCurrency,
+      catalogBaseCurrency: config.catalogBaseCurrency || 'USD',
+      defaultLocale: config.defaultLocale,
+      countryPayments: COUNTRY_PAYMENTS,
+      paymentsLiveMode: isPaymentsLiveMode(),
+      cdnUrl: config.cdnUrl,
+      clientUrl: config.clientUrl,
+      googleClientId: config.googleClientId || null,
+      googleLoginEnabled: Boolean(config.googleClientId),
+      facebookAppId: config.facebookAppId || null,
+      facebookLoginEnabled: Boolean(config.facebookAppId && config.facebookAppSecret),
+      volumeDiscountTiers: publicVolumeTiers(),
+      trustBadge,
+    }
+  })
 
   app.get('/api/geo', async (request) => detectRegion(request))
 
