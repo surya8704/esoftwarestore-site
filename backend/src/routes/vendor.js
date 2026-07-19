@@ -40,6 +40,15 @@ const productSchema = z
       }),
     visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
     description: z.string().max(1000).optional().default(''),
+    shippingTitle: z.string().max(160).optional().default(''),
+    shippingText: z.string().max(4000).optional().default(''),
+    deliveryText: z.string().max(2000).optional().default(''),
+    shippingBullets: z
+      .array(z.string().trim().max(500))
+      .max(20)
+      .optional()
+      .default([])
+      .transform((items) => (items ?? []).map((item) => String(item || '').trim()).filter(Boolean)),
     hidePrice: z.boolean().optional(),
     hideCart: z.boolean().optional(),
     vendorId: z
@@ -82,6 +91,9 @@ const normalizeProduct = (product) => {
     vendorId: p.vendorId?.toString?.() ?? p.vendorId,
     allowedCountries: parseJsonList(p.allowedCountries) ?? [],
     blockedCountries: parseJsonList(p.blockedCountries) ?? [],
+    shippingBullets: Array.isArray(p.shippingBullets)
+      ? p.shippingBullets.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     imageUrl: resolveStoreProductImage(p, config.apiPublicUrl),
   }
 }
@@ -108,6 +120,10 @@ function productWriteFields(payload) {
     imageUrl: payload.imageUrl || null,
     visualAccent: payload.visualAccent,
     description: payload.description,
+    shippingTitle: payload.shippingTitle ?? '',
+    shippingText: payload.shippingText ?? '',
+    deliveryText: payload.deliveryText ?? '',
+    shippingBullets: payload.shippingBullets ?? [],
     hidePrice: payload.hidePrice ?? false,
     hideCart: payload.hideCart ?? false,
     allowedCountries: encodeCountryList(payload.allowedCountries),

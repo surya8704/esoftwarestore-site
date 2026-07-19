@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Package, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
+import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Package, Pencil, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react'
 import { dashboardApi, uploadProductImage, uploadProductLicenseKeys } from '../api'
 import { defaultVendorPermissions } from '../vendorAccess'
 import RegionalPricesEditor, {
@@ -20,14 +20,19 @@ export default function ProductsTab({
   const [priceByCountry, setPriceByCountry] = useState({})
   const [loadingRegional, setLoadingRegional] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [listLoading, setListLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [keysUploadingId, setKeysUploadingId] = useState(null)
   const [keyOverview, setKeyOverview] = useState(null)
   const [status, setStatus] = useState('')
   const [bundlePickId, setBundlePickId] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [highlightedId, setHighlightedId] = useState(null)
   const fileInputRef = useRef(null)
   const keysInputRef = useRef(null)
   const keysProductIdRef = useRef(null)
+  const listRef = useRef(null)
+  const highlightTimerRef = useRef(null)
 
   const canEditPrices = isAdmin || vendorPermissions.canEditPrices
   const canUploadImages = isAdmin || vendorPermissions.canUploadImages
@@ -53,20 +58,64 @@ export default function ProductsTab({
     }, 0)
   }, [form.productType, form.bundleItems, products])
 
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) => {
+      const haystack = [
+        p.name,
+        p.slug,
+        p.category,
+        p.vendorName,
+        p.licenseType,
+        p.productType,
+        ...(p.allowedCountries ?? []),
+        ...(p.blockedCountries ?? []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [products, searchQuery])
+
+  const revealProduct = (productId) => {
+    if (!productId) return
+    setSearchQuery('')
+    setHighlightedId(productId)
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlightedId(null), 4000)
+    requestAnimationFrame(() => {
+      listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const row = document.getElementById(`admin-product-${productId}`)
+      row?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
+
   const load = async () => {
-    const data = await dashboardApi(productsPath)
-    setProducts(data.products)
-    if (isAdmin) {
-      const [v, overview] = await Promise.all([
-        dashboardApi('/api/admin/vendors'),
-        dashboardApi('/api/admin/license-keys/overview'),
-      ])
-      setVendors(v.vendors)
-      setKeyOverview(overview)
+    setListLoading(true)
+    try {
+      const data = await dashboardApi(productsPath)
+      setProducts(data.products ?? [])
+      if (isAdmin) {
+        const [v, overview] = await Promise.all([
+          dashboardApi('/api/admin/vendors'),
+          dashboardApi('/api/admin/license-keys/overview'),
+        ])
+        setVendors(v.vendors)
+        setKeyOverview(overview)
+      }
+    } finally {
+      setListLoading(false)
     }
   }
 
-  useEffect(() => { load().catch(() => {}) }, [isAdmin])
+  useEffect(() => {
+    load().catch((err) => setStatus(err.message || 'Failed to load products'))
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    }
+  }, [isAdmin])
 
   const reset = () => {
     setEditingId(null)
@@ -193,6 +242,10 @@ export default function ProductsTab({
         imageUrl: form.imageUrl || '',
         visualAccent: form.visualAccent || 'from-sky-500 to-cyan-400',
         description: form.description || '',
+        shippingTitle: String(form.shippingTitle || '').trim(),
+        shippingBullets: (form.shippingBullets ?? [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
         vendorId: form.vendorId || undefined,
         allowedCountries: form.allowedCountries ?? [],
         blockedCountries: form.blockedCountries ?? [],
@@ -201,32 +254,42 @@ export default function ProductsTab({
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
       let productId = editingId
       let wasEditing = Boolean(editingId)
+      let savedProduct = null
       if (editingId) {
-        await dashboardApi(`${base}/${editingId}`, { method: 'PUT', body: JSON.stringify(body) })
+        const updated = await dashboardApi(`${base}/${editingId}`, { method: 'PUT', body: JSON.stringify(body) })
+        savedProduct = updated.product
+        productId = updated.product?.id ?? editingId
       } else {
         const created = await dashboardApi(base, { method: 'POST', body: JSON.stringify(body) })
+        savedProduct = created.product
         productId = created.product?.id
       }
 
       let regionalCount = 0
+      let regionalError = ''
       if (isAdmin && productId) {
         try {
           regionalCount = await saveRegionalPrices(productId)
         } catch (regionalErr) {
-          await load()
-          setStatus(
-            (wasEditing ? 'Product saved' : 'Product created') +
-              ` · regional prices failed: ${regionalErr.message}`,
-          )
-          return
+          regionalError = regionalErr.message
         }
+      }
+
+      // Show the new/updated product in the list immediately, then refresh from server.
+      if (savedProduct?.id) {
+        setProducts((prev) => {
+          const next = prev.filter((p) => p.id !== savedProduct.id)
+          return [{ ...savedProduct, vendorName: savedProduct.vendorName ?? prev.find((p) => p.id === savedProduct.id)?.vendorName }, ...next]
+        })
       }
 
       await load()
       reset()
+      revealProduct(productId)
       setStatus(
         (wasEditing ? 'Product updated' : 'Product created') +
-          (regionalCount ? ` · ${regionalCount} regional price${regionalCount === 1 ? '' : 's'} saved` : ''),
+          (regionalCount ? ` · ${regionalCount} regional price${regionalCount === 1 ? '' : 's'} saved` : '') +
+          (regionalError ? ` · regional prices failed: ${regionalError}` : ''),
       )
     } catch (err) {
       setStatus(err.message)
@@ -254,6 +317,13 @@ export default function ProductsTab({
       imageUrl: product.imageUrl ?? '',
       visualAccent: product.visualAccent ?? 'from-sky-500 to-cyan-400',
       description: product.description ?? '',
+      shippingTitle: product.shippingTitle ?? '',
+      shippingBullets:
+        Array.isArray(product.shippingBullets) && product.shippingBullets.length
+          ? product.shippingBullets
+          : product.shippingText
+            ? String(product.shippingText).split(/\n+/).map((line) => line.trim()).filter(Boolean)
+            : [''],
       vendorId: product.vendorId ?? '',
       allowedCountries: product.allowedCountries ?? [],
       blockedCountries: product.blockedCountries ?? [],
@@ -360,17 +430,31 @@ export default function ProductsTab({
         <div>
           <h2 className="text-2xl font-bold">{isAdmin ? 'All products' : 'My products'}</h2>
           <p className="text-sm text-slate-500">
-            {products.length} listings · create standard products or multi-product bundle deals
+            {searchQuery.trim()
+              ? `${filteredProducts.length} of ${products.length} listings`
+              : `${products.length} listings`}
+            {' · '}create standard products or multi-product bundle deals
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reset}
-          disabled={!canCreateProducts && !editingId}
-          className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-white/10"
-        >
-          <Plus size={14} className="inline" /> New
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => load().catch((err) => setStatus(err.message || 'Failed to load products'))}
+            disabled={listLoading}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-white/10"
+          >
+            {listLoading ? <LoaderCircle className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            disabled={!canCreateProducts && !editingId}
+            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-white/10"
+          >
+            <Plus size={14} className="inline" /> New
+          </button>
+        </div>
       </div>
 
       {isAdmin ? (
@@ -610,6 +694,74 @@ export default function ProductsTab({
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
         </label>
 
+        <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Shipping &amp; delivery</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Title and bullet points shown on the product page Shipping &amp; Delivery tab. Leave bullets empty to use defaults.
+          </p>
+          <label className="mt-4 block">
+            <span className="mb-1 block text-xs font-medium">Shipping title</span>
+            <input
+              value={form.shippingTitle ?? ''}
+              onChange={(e) => setForm({ ...form, shippingTitle: e.target.value })}
+              placeholder="Digital Download — No Physical Shipment"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+            />
+          </label>
+          <div className="mt-4 space-y-2">
+            <span className="block text-xs font-medium">Bullet points</span>
+            {(form.shippingBullets ?? ['']).map((bullet, index) => (
+              <div key={`shipping-bullet-${index}`} className="flex items-center gap-2">
+                <span className="w-4 shrink-0 text-center text-slate-400">•</span>
+                <input
+                  value={bullet}
+                  onChange={(e) => {
+                    const next = [...(form.shippingBullets ?? [''])]
+                    next[index] = e.target.value
+                    setForm({ ...form, shippingBullets: next })
+                  }}
+                  placeholder={
+                    index === 0
+                      ? 'Instant email delivery after payment'
+                      : 'Add another shipping or delivery point'
+                  }
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = form.shippingBullets ?? ['']
+                    if (current.length <= 1) {
+                      setForm({ ...form, shippingBullets: [''] })
+                      return
+                    }
+                    setForm({
+                      ...form,
+                      shippingBullets: current.filter((_, i) => i !== index),
+                    })
+                  }}
+                  className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                  aria-label="Remove bullet"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                setForm({
+                  ...form,
+                  shippingBullets: [...(form.shippingBullets ?? ['']), ''],
+                })
+              }
+              className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10"
+            >
+              <Plus size={12} /> Add bullet
+            </button>
+          </div>
+        </div>
+
         {isAdmin && canEditPrices ? (
           <div className="sm:col-span-2">
             {loadingRegional ? (
@@ -655,72 +807,116 @@ export default function ProductsTab({
         </div>
       </form>
 
-      <div className="mt-8 space-y-3">
-        {products.map((p) => {
-          const bundle = (p.productType ?? 'standard') === 'bundle'
-          return (
-            <div key={p.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
-                  {p.imageUrl ? (
-                    <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-slate-400">
-                      <ImagePlus size={18} />
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p className="font-semibold">
-                    {p.name}
-                    {bundle ? (
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/20 dark:text-violet-200">
-                        <Package size={10} /> Bundle
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    {p.category} • {formatMoney(p.price)} • Stock {p.stock}
-                    {p.vendorName ? ` • ${p.vendorName}` : ''}
-                    {bundle ? ` • ${(p.bundleItems?.length ?? 0)} products` : ''}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
-                  {isAdmin && !bundle && p.licensePool ? (
-                    <p className={`mt-1 text-xs font-semibold ${p.licensePool.available > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      Keys: {p.licensePool.available} available · {p.licensePool.assigned} used
-                    </p>
-                  ) : null}
-                  {bundle ? (
-                    <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
-                      Keys delivered from each included product’s pool
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {isAdmin && !bundle ? (
-                  <button
-                    type="button"
-                    onClick={() => openKeysPicker(p.id)}
-                    disabled={keysUploadingId === p.id}
-                    className="inline-flex items-center gap-1 rounded-full border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300"
-                  >
-                    {keysUploadingId === p.id ? (
-                      <LoaderCircle className="animate-spin" size={14} />
+      <div ref={listRef} className="mt-8 scroll-mt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-bold">Product list</h3>
+          <div className="relative min-w-[240px] flex-1 sm:max-w-md">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, slug, category, vendor..."
+              className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-10 text-sm dark:border-white/10 dark:bg-white/5"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10"
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {listLoading && !products.length ? (
+          <p className="mt-4 text-sm text-slate-500">Loading products...</p>
+        ) : null}
+
+        {!listLoading && !filteredProducts.length ? (
+          <p className="mt-4 text-sm text-slate-500">
+            {searchQuery.trim() ? `No products match “${searchQuery.trim()}”.` : 'No products yet. Create one above.'}
+          </p>
+        ) : null}
+
+        <div className="mt-4 space-y-3">
+          {filteredProducts.map((p) => {
+            const bundle = (p.productType ?? 'standard') === 'bundle'
+            const highlighted = highlightedId === p.id
+            return (
+              <div
+                key={p.id}
+                id={`admin-product-${p.id}`}
+                className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+                  highlighted
+                    ? 'border-sky-400 bg-sky-50 shadow-sm dark:border-sky-500/50 dark:bg-sky-500/10'
+                    : 'border-slate-200 dark:border-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
+                    {p.imageUrl ? (
+                      <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
                     ) : (
-                      <FileSpreadsheet size={14} />
+                      <div className="flex h-full w-full items-center justify-center text-slate-400">
+                        <ImagePlus size={18} />
+                      </div>
                     )}
-                    Upload keys
+                  </div>
+                  <div>
+                    <p className="font-semibold">
+                      {p.name}
+                      {bundle ? (
+                        <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-500/20 dark:text-violet-200">
+                          <Package size={10} /> Bundle
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {p.category} • {formatMoney(p.price)} • Stock {p.stock}
+                      {p.vendorName ? ` • ${p.vendorName}` : ''}
+                      {bundle ? ` • ${(p.bundleItems?.length ?? 0)} products` : ''}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
+                    {isAdmin && !bundle && p.licensePool ? (
+                      <p className={`mt-1 text-xs font-semibold ${p.licensePool.available > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        Keys: {p.licensePool.available} available · {p.licensePool.assigned} used
+                      </p>
+                    ) : null}
+                    {bundle ? (
+                      <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">
+                        Keys delivered from each included product’s pool
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {isAdmin && !bundle ? (
+                    <button
+                      type="button"
+                      onClick={() => openKeysPicker(p.id)}
+                      disabled={keysUploadingId === p.id}
+                      className="inline-flex items-center gap-1 rounded-full border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-60 dark:border-sky-500/30 dark:text-sky-300"
+                    >
+                      {keysUploadingId === p.id ? (
+                        <LoaderCircle className="animate-spin" size={14} />
+                      ) : (
+                        <FileSpreadsheet size={14} />
+                      )}
+                      Upload keys
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => edit(p)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10">Edit</button>
+                  <button type="button" onClick={() => remove(p.id)} className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white">
+                    <Trash2 size={14} className="inline" />
                   </button>
-                ) : null}
-                <button type="button" onClick={() => edit(p)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10">Edit</button>
-                <button type="button" onClick={() => remove(p.id)} className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white">
-                  <Trash2 size={14} className="inline" />
-                </button>
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

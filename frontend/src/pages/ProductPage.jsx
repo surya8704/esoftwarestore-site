@@ -20,6 +20,26 @@ const TABS = [
   { id: 'reviews', label: 'Reviews' },
 ]
 
+const DEFAULT_SHIPPING_TITLE = 'Digital Download — No Physical Shipment'
+const DEFAULT_SHIPPING_BULLETS = [
+  'This is a digital-only product — no CD, DVD, or USB is shipped.',
+  'After purchase, the download link and activation key are sent by email.',
+  'Instant email delivery after payment.',
+]
+
+function resolveShippingBullets(product) {
+  const bullets = (product?.shippingBullets ?? [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+  if (bullets.length) return bullets
+  const legacy = String(product?.shippingText || '')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (legacy.length) return legacy
+  return DEFAULT_SHIPPING_BULLETS
+}
+
 function defaultVariantId(product) {
   if (!product?.variants?.length) return null
   const def = product.variants.find((v) => v.isDefault) ?? product.variants[0]
@@ -354,22 +374,25 @@ export default function ProductPage() {
               <div>
                 <h2 className="text-lg font-bold text-store-heading">Introduction</h2>
                 <p className="mt-3 leading-relaxed">{product.description}</p>
-                <p className="mt-4 leading-relaxed">
-                  Genuine license with instant digital delivery. Activation key and download instructions sent by email after purchase.
-                </p>
               </div>
             ) : null}
             {tab === 'shipping' ? (
               <div>
-                <h3 className="font-bold text-store-heading">Digital Download — No Physical Shipment</h3>
-                <p className="mt-2">This is a digital-only product. After purchase, the download link and activation key will be sent via email. No CD, DVD, or USB will be shipped.</p>
+                <h3 className="font-bold text-store-heading">
+                  {(product.shippingTitle || '').trim() || DEFAULT_SHIPPING_TITLE}
+                </h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5">
+                  {resolveShippingBullets(product).map((bullet, index) => (
+                    <li key={`shipping-${index}`}>{bullet}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {tab === 'detail' ? (
               <ul className="list-disc space-y-2 pl-5">
                 <li>License type: {product.licenseType}</li>
                 <li>Category: {product.category}</li>
-                <li>Instant email delivery after payment</li>
+                <li>{resolveShippingBullets(product)[0]}</li>
                 <li>Official vendor download link included</li>
               </ul>
             ) : null}

@@ -102,6 +102,8 @@ export const emptyProductForm = {
   imageUrl: '',
   visualAccent: 'from-sky-500 to-cyan-400',
   description: '',
+  shippingTitle: '',
+  shippingBullets: [''],
   vendorId: '',
   allowedCountries: [],
   blockedCountries: [],
