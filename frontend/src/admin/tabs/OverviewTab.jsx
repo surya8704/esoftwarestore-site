@@ -80,7 +80,13 @@ export default function OverviewTab({ isAdmin, formatMoney, onNavigate }) {
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <StatCard icon={BarChart3} label="Total revenue" value={formatMoney(data.revenue)} hint="From paid orders only" onClick={() => go('orders')} />
+          <StatCard
+            icon={BarChart3}
+            label="Total revenue"
+            value={formatMoney(data.revenue, data.revenueCurrency || 'USD')}
+            hint="From paid orders only (converted to USD)"
+            onClick={() => go('orders')}
+          />
           <StatCard icon={ShoppingBag} label="Total orders" value={data.totalOrders} hint={`${data.paidOrders ?? 0} paid • ${data.pendingOrders ?? 0} pending`} accent="text-amber-600" onClick={() => go('orders')} />
           <StatCard icon={Wallet} label="Pending payouts" value={formatMoney(data.pendingVendorPayouts)} hint="Awaiting admin approval" accent="text-orange-600" onClick={() => go('payouts')} />
           <StatCard icon={Wallet} label="Paid to vendors" value={formatMoney(data.paidVendorPayouts ?? 0)} accent="text-emerald-600" onClick={() => go('payouts')} />

@@ -1,5 +1,6 @@
 import Razorpay from 'razorpay'
 import { config } from '../config.js'
+import { convertViaInr } from './fxRates.js'
 import { fromStripeAmount } from './stripe.js'
 
 const GATEWAY_LABELS = {
@@ -445,16 +446,30 @@ export function resolveOrderPaymentBreakdown(order) {
   }
 }
 
-export function summarizePaymentBreakdowns(breakdowns) {
+/**
+ * Sum confirmed payment rows in a single reporting currency (default USD).
+ * Pass ratesToInr from fetchRatesToInr() so mixed-currency orders convert correctly.
+ */
+export function summarizePaymentBreakdowns(breakdowns, { ratesToInr = null, reportCurrency = 'USD' } = {}) {
+  const target = String(reportCurrency || 'USD').toUpperCase()
+
+  const convert = (amount, currency) => {
+    const value = Number(amount) || 0
+    const code = String(currency || 'INR').toUpperCase()
+    if (!ratesToInr || code === target) return Math.round(value * 100) / 100
+    return convertViaInr(value, code, target, ratesToInr)
+  }
+
   return breakdowns
     .filter((row) => row.paymentConfirmed)
     .reduce(
       (acc, row) => {
-        acc.totalPaid += row.amountPaid ?? 0
-        acc.totalFees += (row.gatewayFee ?? 0) + (row.gatewayTax ?? 0)
-        acc.totalGatewayFee += row.gatewayFee ?? 0
-        acc.totalGatewayTax += row.gatewayTax ?? 0
-        acc.totalNetPayout += row.netPayout ?? 0
+        const currency = row.currency || 'INR'
+        acc.totalPaid += convert(row.amountPaid ?? 0, currency)
+        acc.totalFees += convert((row.gatewayFee ?? 0) + (row.gatewayTax ?? 0), currency)
+        acc.totalGatewayFee += convert(row.gatewayFee ?? 0, currency)
+        acc.totalGatewayTax += convert(row.gatewayTax ?? 0, currency)
+        acc.totalNetPayout += convert(row.netPayout ?? 0, currency)
         return acc
       },
       {
@@ -463,6 +478,7 @@ export function summarizePaymentBreakdowns(breakdowns) {
         totalGatewayFee: 0,
         totalGatewayTax: 0,
         totalNetPayout: 0,
+        currency: target,
       },
     )
 }

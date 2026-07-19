@@ -91,7 +91,7 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp, vendo
           <h2 className="text-2xl font-bold">{isAdmin ? 'Paid orders' : 'My orders'}</h2>
           <p className="mt-1 text-sm text-slate-500">
             {isAdmin
-              ? `${summary?.count ?? orders.length} paid orders • Net payout ${fmt(summary?.totalNetPayout ?? 0)}`
+              ? `${summary?.count ?? orders.length} paid orders • Net payout ${fmt(summary?.totalNetPayout ?? 0, summary?.currency || 'USD')}`
               : `${orders.length} records`}
           </p>
         </div>
@@ -114,20 +114,22 @@ export default function OrdersTab({ isAdmin, formatMoney: formatMoneyProp, vendo
       {isAdmin && summary ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer paid</p>
-            <p className="mt-1 text-xl font-bold text-emerald-600">{fmt(summary.totalPaid)}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Customer paid ({summary.currency || 'USD'})
+            </p>
+            <p className="mt-1 text-xl font-bold text-emerald-600">{fmt(summary.totalPaid, summary.currency || 'USD')}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gateway fees</p>
-            <p className="mt-1 text-xl font-bold text-rose-600">{fmt(summary.totalGatewayFee)}</p>
+            <p className="mt-1 text-xl font-bold text-rose-600">{fmt(summary.totalGatewayFee, summary.currency || 'USD')}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gateway tax</p>
-            <p className="mt-1 text-xl font-bold text-amber-600">{fmt(summary.totalGatewayTax)}</p>
+            <p className="mt-1 text-xl font-bold text-amber-600">{fmt(summary.totalGatewayTax, summary.currency || 'USD')}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net payout</p>
-            <p className="mt-1 text-xl font-bold text-sky-600">{fmt(summary.totalNetPayout)}</p>
+            <p className="mt-1 text-xl font-bold text-sky-600">{fmt(summary.totalNetPayout, summary.currency || 'USD')}</p>
           </div>
         </div>
       ) : null}

@@ -40,6 +40,8 @@ import {
   processPendingKeyDeliveries,
 } from '../services/license.js'
 import { buildEarningsReport } from '../services/reports.js'
+import { convertViaInr, fetchRatesToInr } from '../services/fxRates.js'
+import { config } from '../config.js'
 import {
   listProductRegionalPrices,
   syncProductRegionalPrices,
@@ -123,6 +125,7 @@ const CONFIRMED_PAID_ORDER_FILTER = {
 
 export async function adminRoutes(app) {
   app.get('/api/admin/overview', { preHandler: [app.requireAdmin] }, async () => {
+    const reportCurrency = (config.catalogBaseCurrency || 'USD').toUpperCase()
     const [
       productCount,
       orderCount,
@@ -130,9 +133,10 @@ export async function adminRoutes(app) {
       pendingOrderCount,
       userCount,
       vendorCount,
-      revenueResult,
+      paidOrders,
       pendingPayouts,
       paidPayouts,
+      fx,
     ] = await Promise.all([
       Product.countDocuments(),
       Order.countDocuments(),
@@ -140,13 +144,18 @@ export async function adminRoutes(app) {
       Order.countDocuments({ paymentStatus: { $nin: ['paid', 'refunded', 'cancelled', 'failed'] } }),
       User.countDocuments(),
       Vendor.countDocuments(),
-      Order.aggregate([
-        { $match: CONFIRMED_PAID_ORDER_FILTER },
-        { $group: { _id: null, revenue: { $sum: '$amountPaid' }, fallbackRevenue: { $sum: '$total' } } },
-      ]),
+      Order.find(CONFIRMED_PAID_ORDER_FILTER).select('amountPaid total currency').lean(),
       VendorPayout.aggregate([{ $match: { status: 'pending' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       VendorPayout.aggregate([{ $match: { status: 'paid' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      fetchRatesToInr(),
     ])
+
+    let revenue = 0
+    for (const order of paidOrders) {
+      const amount = Number(order.amountPaid ?? order.total ?? 0) || 0
+      const currency = String(order.currency || 'INR').toUpperCase()
+      revenue += convertViaInr(amount, currency, reportCurrency, fx.ratesToInr)
+    }
 
     return {
       totalProducts: productCount,
@@ -155,7 +164,8 @@ export async function adminRoutes(app) {
       pendingOrders: pendingOrderCount,
       totalUsers: userCount,
       totalVendors: vendorCount,
-      revenue: Number(revenueResult[0]?.revenue ?? revenueResult[0]?.fallbackRevenue ?? 0),
+      revenue,
+      revenueCurrency: reportCurrency,
       pendingVendorPayouts: Number(pendingPayouts[0]?.total ?? 0),
       paidVendorPayouts: Number(paidPayouts[0]?.total ?? 0),
     }
@@ -671,7 +681,12 @@ export async function adminRoutes(app) {
     }
 
     const breakdowns = orders.map((o) => o.payment).filter((p) => p.paymentConfirmed)
-    const summary = summarizePaymentBreakdowns(breakdowns)
+    const fx = await fetchRatesToInr()
+    const reportCurrency = (config.catalogBaseCurrency || 'USD').toUpperCase()
+    const summary = summarizePaymentBreakdowns(breakdowns, {
+      ratesToInr: fx.ratesToInr,
+      reportCurrency,
+    })
     return { orders, summary: { ...summary, count: orders.length } }
   })
 

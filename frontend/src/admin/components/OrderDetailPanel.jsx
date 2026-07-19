@@ -527,7 +527,7 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
                         <div>
                           <p className="font-semibold">{item.productName}</p>
                           <p className="text-xs text-slate-500">
-                            Qty {item.quantity} • {formatMoney(item.unitPrice * item.quantity)}
+                            Qty {item.quantity} • {formatMoney(item.unitPrice * item.quantity, currency)}
                             {item.sku ? ` • ${item.sku}` : ''}
                           </p>
                         </div>
@@ -668,7 +668,7 @@ export default function OrderDetailPanel({ orderId, formatMoney, onBack, onUpdat
               </div>
 
               <div className="mt-4 text-right text-sm font-bold">
-                Order total: {formatMoney(order.total)}
+                Order total: {formatMoney(order.total, currency)}
               </div>
             </section>
           ) : null}

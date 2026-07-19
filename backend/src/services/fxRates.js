@@ -98,3 +98,14 @@ export function convertToInr(amount, currency, ratesToInr) {
   }
   return Math.round(value * multiplier)
 }
+
+/** Convert via INR pivot using rates where ratesToInr[code] = INR per 1 unit of code. */
+export function convertViaInr(amount, fromCurrency, toCurrency, ratesToInr) {
+  const from = String(fromCurrency || 'INR').toUpperCase()
+  const to = String(toCurrency || 'USD').toUpperCase()
+  const inr = convertToInr(amount, from, ratesToInr)
+  if (to === 'INR') return inr
+  const toPerInrUnit = ratesToInr?.[to]
+  if (!Number.isFinite(toPerInrUnit) || toPerInrUnit <= 0) return inr
+  return Math.round(inr / toPerInrUnit)
+}
