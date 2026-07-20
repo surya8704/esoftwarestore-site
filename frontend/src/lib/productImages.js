@@ -229,6 +229,27 @@ export function isLegacyBrokenMediaUrl(url) {
   }
 }
 
+export function isCustomProductImageUrl(url) {
+  const value = String(url ?? '').trim()
+  if (!value) return false
+  if (value.includes('/uploads/')) return true
+  if (value.includes('/api/media/product-cover')) return false
+  if (value.startsWith('data:image/')) return false
+  if (isLegacyBrokenMediaUrl(value)) return false
+  return value.startsWith('/') || /^https?:\/\//i.test(value)
+}
+
+export function productCoverApiUrl(product, apiBase) {
+  const base = String(apiBase || '').replace(/\/$/, '')
+  const params = new URLSearchParams({
+    name: product?.name || 'Software',
+    category: product?.category || '',
+    slug: product?.slug || product?.id || '',
+  })
+  if (!base) return productCoverDataUri(product)
+  return `${base}/api/media/product-cover?${params.toString()}`
+}
+
 export function resolveStoreProductImage(product) {
   const custom = product?.imageUrl
   if (custom && !isLegacyBrokenMediaUrl(custom) && String(custom).includes('/uploads/')) {

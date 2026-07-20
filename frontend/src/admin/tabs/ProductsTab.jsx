@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Package, Pencil, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react'
-import { dashboardApi, uploadProductImage, uploadProductLicenseKeys } from '../api'
+import { dashboardApi, productCoverPreviewUrl, uploadProductImage, uploadProductLicenseKeys } from '../api'
+import { isCustomProductImageUrl } from '../../lib/productImages'
 import { defaultVendorPermissions } from '../vendorAccess'
 import RegionalPricesEditor, {
   mapToRegionalPricesPayload,
@@ -202,6 +203,20 @@ export default function ProductsTab({
       .replace(/^-+|-+$/g, '')
       .slice(0, 120)
 
+  const usesCustomImage = isCustomProductImageUrl(form.imageUrl)
+
+  const previewImageUrl = useMemo(() => {
+    if (usesCustomImage) return form.imageUrl
+    const name = String(form.name || '').trim()
+    if (name.length < 2) return ''
+    const slug = slugify(form.slug) || slugify(name)
+    return productCoverPreviewUrl({
+      name,
+      category: String(form.category || '').trim() || 'Windows',
+      slug,
+    })
+  }, [usesCustomImage, form.imageUrl, form.name, form.slug, form.category])
+
   const submit = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -239,7 +254,7 @@ export default function ProductsTab({
         rating: Number(form.rating) || 4.8,
         stock: Math.max(0, Math.floor(Number(form.stock) || 0)),
         licenseType: String(form.licenseType || '').trim() || 'Lifetime',
-        imageUrl: form.imageUrl || '',
+        imageUrl: usesCustomImage ? form.imageUrl : '',
         visualAccent: form.visualAccent || 'from-sky-500 to-cyan-400',
         description: form.description || '',
         shippingTitle: String(form.shippingTitle || '').trim(),
@@ -640,13 +655,18 @@ export default function ProductsTab({
           <span className="mb-2 block text-xs font-medium">Product image</span>
           <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-slate-300 p-4 dark:border-white/10 sm:flex-row sm:items-start">
             <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
-              {form.imageUrl ? (
-                <img src={form.imageUrl} alt="Product preview" className="h-full w-full object-cover" />
+              {previewImageUrl ? (
+                <img src={previewImageUrl} alt="Product preview" className="h-full w-full object-cover" />
               ) : (
                 <ImagePlus className="text-slate-400" size={28} />
               )}
             </div>
             <div className="flex-1 space-y-3">
+              {!usesCustomImage ? (
+                <p className="text-xs text-sky-700 dark:text-sky-300">
+                  Cover auto-generated from product name. Upload or paste a URL to override.
+                </p>
+              ) : null}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -667,10 +687,19 @@ export default function ProductsTab({
                 <p className="text-xs text-amber-700">Image upload permission is disabled for your account.</p>
               ) : null}
               <p className="text-xs text-slate-500">JPEG, PNG, WebP, or GIF. Max 5MB.</p>
+              {usesCustomImage ? (
+                <button
+                  type="button"
+                  onClick={() => setForm((prev) => ({ ...prev, imageUrl: '' }))}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-white/10"
+                >
+                  Use auto cover from name
+                </button>
+              ) : null}
               <label>
                 <span className="mb-1 block text-xs font-medium">Or paste image URL</span>
                 <input
-                  value={form.imageUrl}
+                  value={usesCustomImage ? form.imageUrl : ''}
                   onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
                   placeholder="https://..."
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"

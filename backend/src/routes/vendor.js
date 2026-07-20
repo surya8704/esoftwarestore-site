@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { mapId } from '../db/client.js'
 import { OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
 import { parseJsonList } from '../lib/utils.js'
-import { resolveStoreProductImage } from '../lib/productImages.js'
+import { resolveProductImageForSave, resolveStoreProductImage } from '../lib/productImages.js'
 import { validateAndNormalizeBundleItems } from '../lib/bundles.js'
 import { config } from '../config.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
@@ -117,7 +117,7 @@ function productWriteFields(payload) {
     rating: Math.round(payload.rating * 10),
     stock: payload.stock,
     licenseType: productType === 'bundle' ? payload.licenseType || 'Bundle deal' : payload.licenseType,
-    imageUrl: payload.imageUrl || null,
+    imageUrl: resolveProductImageForSave(payload, config.apiPublicUrl),
     visualAccent: payload.visualAccent,
     description: payload.description,
     shippingTitle: payload.shippingTitle ?? '',

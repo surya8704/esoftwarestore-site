@@ -241,6 +241,27 @@ export function isLegacyBrokenMediaUrl(url) {
   }
 }
 
+export function isCustomUploadedImageUrl(url) {
+  return Boolean(url && String(url).includes('/uploads/'))
+}
+
+export function shouldAutoGenerateProductImage(url) {
+  const value = String(url ?? '').trim()
+  if (!value) return true
+  if (isLegacyBrokenMediaUrl(value)) return true
+  if (value.includes('/api/media/product-cover')) return true
+  return false
+}
+
+/** Persisted image URL for create/update — keeps custom uploads & external URLs, else branded cover. */
+export function resolveProductImageForSave(product, apiPublicUrl) {
+  const custom = String(product?.imageUrl ?? '').trim()
+  if (custom && !shouldAutoGenerateProductImage(custom)) {
+    return custom
+  }
+  return productCoverApiUrl(product, apiPublicUrl)
+}
+
 export function resolveStoreProductImage(product, apiPublicUrl = '') {
   const custom = product?.imageUrl
   if (custom && !isLegacyBrokenMediaUrl(custom) && !String(custom).includes('/api/media/product-cover')) {

@@ -1,3 +1,5 @@
+import { productCoverApiUrl } from '../lib/productImages.js'
+
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
 
 function readApiErrorMessage(data, fallback = 'Request failed') {
@@ -46,6 +48,10 @@ export async function dashboardApi(path, options = {}) {
     throw new Error(readApiErrorMessage(data))
   }
   return data
+}
+
+export function productCoverPreviewUrl(product) {
+  return productCoverApiUrl(product, API_BASE)
 }
 
 export async function uploadProductImage(file) {
