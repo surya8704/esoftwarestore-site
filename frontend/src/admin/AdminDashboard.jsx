@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   BadgeCheck,
   Store,
+  Mail,
   UserCircle,
   Users,
   Wallet,
@@ -37,6 +38,7 @@ import RegionsTab from './tabs/RegionsTab'
 import AnnouncementsTab from './tabs/AnnouncementsTab'
 import ReviewsTab from './tabs/ReviewsTab'
 import TrustBadgeTab from './tabs/TrustBadgeTab'
+import AbandonedCartsTab from './tabs/AbandonedCartsTab'
 import ThemeToggle from '../components/ThemeToggle'
 import { defaultVendorPermissions, normalizeVendorPermissions } from './vendorAccess'
 
@@ -50,6 +52,7 @@ const ADMIN_TABS = [
   { id: 'trust-badge', label: 'Trust Badge', icon: BadgeCheck },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
   { id: 'orders', label: 'Orders', icon: ShoppingBag },
+  { id: 'abandoned-carts', label: 'Abandoned', icon: Mail },
   { id: 'customers', label: 'Customers', icon: UserCircle },
   { id: 'coupons', label: 'Coupons', icon: TicketPercent },
   { id: 'pages', label: 'Pages', icon: FileText },
@@ -256,6 +259,7 @@ export default function AdminDashboard() {
           {tab === 'orders' ? (
             <OrdersTab isAdmin={isAdmin} formatMoney={formatMoney} vendorPermissions={vendorPermissions} />
           ) : null}
+          {tab === 'abandoned-carts' && isAdmin ? <AbandonedCartsTab /> : null}
           {tab === 'customers' && isAdmin ? <CustomersTab formatMoney={formatMoney} /> : null}
           {tab === 'coupons' && isAdmin ? <CouponsTab /> : null}
           {tab === 'pages' && isAdmin ? <PagesTab /> : null}

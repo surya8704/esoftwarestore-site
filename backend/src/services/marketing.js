@@ -7,36 +7,7 @@ import { sendAbandonedCartEmail } from './email.js'
 /** Hours from first abandon tracking (createdAt) when each reminder is due. */
 const FOLLOW_UP_HOURS = [1, 24, 72]
 
-export async function trackAbandonedCart(cartId, email, step = 'checkout') {
-  const normalized = String(email || '').trim().toLowerCase()
-  if (!normalized || !normalized.includes('@')) return null
-
-  const existing = await AbandonedCart.findOne({ cartId })
-  if (existing) {
-    existing.email = normalized
-    existing.step = step
-    // Re-open reminder funnel if they abandoned again after a prior recovery
-    if (existing.recovered) {
-      existing.recovered = false
-      existing.followUpStage = 0
-      existing.lastEmailAt = null
-      existing.createdAt = new Date()
-    }
-    await existing.save()
-    return existing._id
-  }
-
-  const created = await AbandonedCart.create({
-    cartId,
-    email: normalized,
-    step,
-    followUpStage: 0,
-    recovered: false,
-  })
-  return created._id
-}
-
-async function loadCartSnapshot(cartId) {
+export async function loadCartSnapshot(cartId) {
   const cart = await Cart.findById(cartId)
   if (!cart) return null
 
@@ -72,6 +43,35 @@ async function loadCartSnapshot(cartId) {
     subtotal,
     currency: cart.currency || config.defaultCurrency,
   }
+}
+
+export async function trackAbandonedCart(cartId, email, step = 'checkout') {
+  const normalized = String(email || '').trim().toLowerCase()
+  if (!normalized || !normalized.includes('@')) return null
+
+  const existing = await AbandonedCart.findOne({ cartId })
+  if (existing) {
+    existing.email = normalized
+    existing.step = step
+    // Re-open reminder funnel if they abandoned again after a prior recovery
+    if (existing.recovered) {
+      existing.recovered = false
+      existing.followUpStage = 0
+      existing.lastEmailAt = null
+      existing.createdAt = new Date()
+    }
+    await existing.save()
+    return existing._id
+  }
+
+  const created = await AbandonedCart.create({
+    cartId,
+    email: normalized,
+    step,
+    followUpStage: 0,
+    recovered: false,
+  })
+  return created._id
 }
 
 export async function processAbandonedCartFollowUps() {

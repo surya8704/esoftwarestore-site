@@ -48,6 +48,11 @@ import {
   updateTrustBadgeSettings,
 } from '../services/storeSettings.js'
 import {
+  getAbandonedCartAdminDetail,
+  listAbandonedCartsForAdmin,
+} from '../services/abandonedCartAdmin.js'
+import { processAbandonedCartFollowUps } from '../services/marketing.js'
+import {
   listProductRegionalPrices,
   syncProductRegionalPrices,
 } from '../services/pricing.js'
@@ -216,6 +221,26 @@ export async function adminRoutes(app) {
     const payload = schema.parse(request.body ?? {})
     const trustBadge = await updateTrustBadgeSettings(payload)
     return { trustBadge, styles: TRUST_BADGE_STYLES }
+  })
+
+  app.get('/api/admin/abandoned-carts', { preHandler: [app.requireAdmin] }, async (request) => {
+    const schema = z.object({
+      status: z.enum(['all', 'abandoned', 'recovered', 'submitted_order']).optional().default('all'),
+      search: z.string().optional().default(''),
+      limit: z.coerce.number().int().min(1).max(500).optional().default(200),
+    })
+    const query = schema.parse(request.query ?? {})
+    return listAbandonedCartsForAdmin(query)
+  })
+
+  app.get('/api/admin/abandoned-carts/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const detail = await getAbandonedCartAdminDetail(request.params.id)
+    if (!detail) return reply.notFound('Abandoned cart not found')
+    return detail
+  })
+
+  app.post('/api/admin/abandoned-carts/process', { preHandler: [app.requireAdmin] }, async () => {
+    return processAbandonedCartFollowUps()
   })
 
   app.get('/api/admin/users', { preHandler: [app.requireAdmin] }, async () => {
