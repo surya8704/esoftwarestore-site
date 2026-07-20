@@ -58,7 +58,7 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
       <div className="flex flex-1 flex-col p-3 sm:p-4 md:p-5">
         <p className="text-[10px] font-bold uppercase tracking-wider text-store-muted">{product.category}</p>
         <Link to={`/product/${product.slug}`}>
-          <h3 className={`mt-1 font-bold leading-snug text-store-heading transition-colors hover:text-[#f97316] line-clamp-2 ${compact ? 'text-sm' : 'text-sm sm:text-[15px]'}`}>
+          <h3 className={`mt-1 font-bold leading-snug text-store-heading transition-colors hover:text-[#f97316] ${isBundle ? 'line-clamp-3' : 'line-clamp-2'} ${compact ? 'text-sm' : 'text-sm sm:text-[15px]'}`}>
             {product.name}
           </h3>
         </Link>

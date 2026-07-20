@@ -14,15 +14,25 @@ function hashKey(value) {
   return hash
 }
 
-function shortenTitle(name = '') {
-  return String(name)
+function shortenTitle(name = '', { isBundle = false } = {}) {
+  let text = String(name)
     .replace(/[“”"]/g, '')
-    .replace(/\s*[|–—-]\s*.*$/, '')
-    .replace(/\s*:\s*.*$/, '')
-    .replace(/\b(Everything You Need to Know About|Complete Guide to|Step-by-Step|for Seamless|Advanced|Professional|Comprehensive)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 48)
+
+  if (!isBundle) {
+    text = text
+      .replace(/\s*[|–—-]\s*.*$/, '')
+      .replace(/\s*:\s*.*$/, '')
+      .replace(/\b(Everything You Need to Know About|Complete Guide to|Step-by-Step|for Seamless|Advanced|Professional|Comprehensive)\b/gi, '')
+      .trim()
+  }
+
+  return text.slice(0, isBundle ? 140 : 48)
+}
+
+function isBundleCover({ productType, name } = {}) {
+  return productType === 'bundle' || /\bbundle\b/i.test(String(name || ''))
 }
 
 function brandFromName(name = '', category = '') {
@@ -131,6 +141,12 @@ function iconMarkup(kind) {
       return `<g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round">
         <path d="M50 120 L50 50 L120 50"/><path d="M50 95 H95 V50"/><circle cx="110" cy="110" r="12"/>
       </g>`
+    case 'bundle':
+      return `<g fill="none" stroke="#fff" stroke-width="6">
+        <rect x="48" y="58" width="56" height="56" rx="8"/>
+        <rect x="68" y="42" width="56" height="56" rx="8"/>
+        <path d="M52 88 H100"/>
+      </g>`
     case 'building':
       return `<g fill="#fff" opacity="0.95">
         <rect x="55" y="55" width="60" height="75" rx="4"/>
@@ -151,13 +167,45 @@ function iconMarkup(kind) {
   }
 }
 
+function wrapTitle(title, maxChars, maxLines = 2) {
+  const words = title.split(/\s+/).filter(Boolean)
+  const lines = []
+  let current = ''
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word
+    if (next.length > maxChars && current) {
+      lines.push(current)
+      current = word
+      if (lines.length >= maxLines) break
+    } else {
+      current = next
+    }
+  }
+  if (lines.length < maxLines && current) lines.push(current)
+  if (words.length && lines.length === maxLines) {
+    const used = lines.join(' ').split(/\s+/).length
+    if (used < words.length) {
+      const lastIndex = maxLines - 1
+      const last = lines[lastIndex]
+      lines[lastIndex] = last.length > maxChars - 1 ? `${last.slice(0, maxChars - 1)}…` : `${last}…`
+    }
+  }
+  return lines.slice(0, maxLines)
+}
+
 /** Build a branded software-style SVG cover from product name. */
-export function buildProductCoverSvg({ name = '', category = '', slug = '' } = {}) {
-  const brand = brandFromName(name, category)
-  const title = shortenTitle(name) || brand.product
-  const lines = wrapTitle(title, 18)
+export function buildProductCoverSvg({ name = '', category = '', slug = '', productType = '' } = {}) {
+  const isBundle = isBundleCover({ productType, name })
+  const brand = isBundle
+    ? { brand: 'eSoftware', product: 'Bundle Deal', from: '#7c3aed', to: '#312e81', accent: '#FFF', icon: 'bundle' }
+    : brandFromName(name, category)
+  const title = shortenTitle(name, { isBundle }) || brand.product
+  const lines = wrapTitle(title, isBundle ? 28 : 18, isBundle ? 4 : 2)
   const hash = hashKey(slug || name)
   const shine = 18 + (hash % 40)
+  const titleFontSize = isBundle ? 34 : 44
+  const titleLineHeight = isBundle ? 44 : 52
+  const titleStartY = isBundle ? 548 : 620
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="900" viewBox="0 0 900 900" role="img" aria-label="${escapeXml(title)}">
@@ -180,33 +228,11 @@ export function buildProductCoverSvg({ name = '', category = '', slug = '' } = {
   <rect x="70" y="70" width="760" height="760" rx="42" fill="url(#card)" stroke="rgba(255,255,255,0.22)" stroke-width="2" filter="url(#shadow)"/>
   <text x="110" y="150" fill="rgba(255,255,255,0.75)" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="3">${escapeXml(brand.brand.toUpperCase())}</text>
   <g transform="translate(110 210) scale(2.2)">${iconMarkup(brand.icon)}</g>
-  <text x="110" y="560" fill="#fff" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="2">${escapeXml(brand.product.toUpperCase())}</text>
-  ${lines.map((line, i) => `<text x="110" y="${620 + i * 52}" fill="#fff" font-family="Segoe UI, Arial, sans-serif" font-size="44" font-weight="800">${escapeXml(line)}</text>`).join('')}
+  <text x="110" y="520" fill="#fff" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="2">${escapeXml(brand.product.toUpperCase())}</text>
+  ${lines.map((line, i) => `<text x="110" y="${titleStartY + i * titleLineHeight}" fill="#fff" font-family="Segoe UI, Arial, sans-serif" font-size="${titleFontSize}" font-weight="800">${escapeXml(line)}</text>`).join('')}
   <rect x="110" y="760" width="200" height="10" rx="5" fill="rgba(255,255,255,${(shine / 100).toFixed(2)})"/>
   <text x="110" y="805" fill="rgba(255,255,255,0.7)" font-family="Segoe UI, Arial, sans-serif" font-size="22">Digital license · Instant delivery</text>
 </svg>`
-}
-
-function wrapTitle(title, maxChars) {
-  const words = title.split(/\s+/).filter(Boolean)
-  const lines = []
-  let current = ''
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word
-    if (next.length > maxChars && current) {
-      lines.push(current)
-      current = word
-      if (lines.length === 2) break
-    } else {
-      current = next
-    }
-  }
-  if (lines.length < 2 && current) lines.push(current)
-  if (words.length && lines.length === 2) {
-    const used = [...lines[0].split(' '), ...lines[1].split(' ')].length
-    if (used < words.length) lines[1] = `${lines[1].replace(/\s+\S+$/, '')}…`
-  }
-  return lines.slice(0, 2)
 }
 
 export function productCoverDataUri(product) {
@@ -214,6 +240,7 @@ export function productCoverDataUri(product) {
     name: product?.name,
     category: product?.category,
     slug: product?.slug || product?.id,
+    productType: product?.productType,
   })
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
@@ -225,6 +252,7 @@ export function productCoverApiUrl(product, apiPublicUrl) {
     name: product?.name || 'Software',
     category: product?.category || '',
     slug: product?.slug || product?.id || '',
+    productType: product?.productType || '',
   })
   return `${base}/api/media/product-cover?${params.toString()}`
 }

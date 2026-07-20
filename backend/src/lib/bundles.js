@@ -53,6 +53,27 @@ export async function validateAndNormalizeBundleItems(rawItems, { excludeProduct
   }))
 }
 
+/** Build a storefront bundle title from included products, e.g. "Windows 11 Pro + Office 2021". */
+export async function buildBundleProductName(bundleItems) {
+  const items = Array.isArray(bundleItems) ? bundleItems : []
+  if (items.length < 2) return ''
+
+  const ids = items.map((item) => item.productId)
+  const children = await Product.find({ _id: { $in: ids } }).lean()
+  const byId = new Map(children.map((child) => [String(child._id), child]))
+
+  return items
+    .map((item) => {
+      const child = byId.get(String(item.productId))
+      const label = String(child?.name || '').trim()
+      if (!label) return null
+      const qty = Math.max(1, Number(item.quantity) || 1)
+      return qty > 1 ? `${label} ×${qty}` : label
+    })
+    .filter(Boolean)
+    .join(' + ')
+}
+
 /** Attach display contents for storefront (batched). */
 export async function attachBundleContents(products, apiPublicUrl = config.apiPublicUrl) {
   const list = Array.isArray(products) ? products : [products]

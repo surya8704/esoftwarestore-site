@@ -3,7 +3,7 @@ import { mapId } from '../db/client.js'
 import { OrderItem, Product, Vendor, VendorPayout } from '../db/models.js'
 import { parseJsonList } from '../lib/utils.js'
 import { resolveProductImageForSave, resolveStoreProductImage } from '../lib/productImages.js'
-import { validateAndNormalizeBundleItems } from '../lib/bundles.js'
+import { validateAndNormalizeBundleItems, buildBundleProductName } from '../lib/bundles.js'
 import { config } from '../config.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 
@@ -144,6 +144,11 @@ async function prepareProductPayload(body, { excludeProductId } = {}) {
     payload.bundleItems = await validateAndNormalizeBundleItems(payload.bundleItems, {
       excludeProductId,
     })
+    const currentName = String(payload.name || '').trim()
+    if (!currentName) {
+      const autoName = await buildBundleProductName(payload.bundleItems)
+      if (autoName) payload.name = autoName
+    }
   } else {
     payload.bundleItems = []
   }

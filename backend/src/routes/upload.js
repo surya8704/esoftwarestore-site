@@ -63,7 +63,8 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
     const name = String(request.query?.name ?? 'Software')
     const category = String(request.query?.category ?? '')
     const slug = String(request.query?.slug ?? '')
-    const svg = buildProductCoverSvg({ name, category, slug })
+    const productType = String(request.query?.productType ?? '')
+    const svg = buildProductCoverSvg({ name, category, slug, productType })
     reply
       .header('Content-Type', 'image/svg+xml; charset=utf-8')
       .header('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')

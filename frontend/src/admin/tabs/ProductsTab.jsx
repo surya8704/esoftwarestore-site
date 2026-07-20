@@ -8,6 +8,19 @@ import RegionalPricesEditor, {
   regionalPricesToMap,
 } from '../components/RegionalPricesEditor'
 
+function buildBundleName(bundleItems, products) {
+  return (bundleItems ?? [])
+    .map((item) => {
+      const child = products.find((p) => p.id === item.productId)
+      const label = String(child?.name || '').trim()
+      if (!label) return null
+      const qty = Math.max(1, Number(item.quantity) || 1)
+      return qty > 1 ? `${label} ×${qty}` : label
+    })
+    .filter(Boolean)
+    .join(' + ')
+}
+
 export default function ProductsTab({
   isAdmin,
   emptyProductForm,
@@ -34,6 +47,8 @@ export default function ProductsTab({
   const keysProductIdRef = useRef(null)
   const listRef = useRef(null)
   const highlightTimerRef = useRef(null)
+  const nameManuallyEditedRef = useRef(false)
+  const slugManuallyEditedRef = useRef(false)
 
   const canEditPrices = isAdmin || vendorPermissions.canEditPrices
   const canUploadImages = isAdmin || vendorPermissions.canUploadImages
@@ -124,6 +139,8 @@ export default function ProductsTab({
     setPriceByCountry({})
     setBundlePickId('')
     setStatus('')
+    nameManuallyEditedRef.current = false
+    slugManuallyEditedRef.current = false
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -203,6 +220,21 @@ export default function ProductsTab({
       .replace(/^-+|-+$/g, '')
       .slice(0, 120)
 
+  useEffect(() => {
+    if ((form.productType ?? 'standard') !== 'bundle') return
+    if (nameManuallyEditedRef.current) return
+    const autoName = buildBundleName(form.bundleItems, products)
+    if (!autoName) return
+    setForm((prev) => {
+      if (prev.name === autoName) return prev
+      return {
+        ...prev,
+        name: autoName,
+        slug: slugManuallyEditedRef.current ? prev.slug : slugify(autoName),
+      }
+    })
+  }, [form.productType, form.bundleItems, products])
+
   const usesCustomImage = isCustomProductImageUrl(form.imageUrl)
 
   const previewImageUrl = useMemo(() => {
@@ -214,8 +246,9 @@ export default function ProductsTab({
       name,
       category: String(form.category || '').trim() || 'Windows',
       slug,
+      productType: form.productType ?? 'standard',
     })
-  }, [usesCustomImage, form.imageUrl, form.name, form.slug, form.category])
+  }, [usesCustomImage, form.imageUrl, form.name, form.slug, form.category, form.productType])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -225,7 +258,9 @@ export default function ProductsTab({
       if ((form.productType ?? 'standard') === 'bundle' && (form.bundleItems?.length ?? 0) < 2) {
         throw new Error('Add at least 2 products to create a bundle deal')
       }
-      const name = String(form.name || '').trim()
+      const name =
+        String(form.name || '').trim() ||
+        ((form.productType ?? 'standard') === 'bundle' ? buildBundleName(form.bundleItems, products) : '')
       if (name.length < 2) throw new Error('Enter a product name (at least 2 characters)')
       const slug = slugify(form.slug) || slugify(name)
       if (!slug || slug.length < 2) throw new Error('Enter a valid slug (e.g. windows-11-pro)')
@@ -315,6 +350,8 @@ export default function ProductsTab({
 
   const edit = async (product) => {
     setEditingId(product.id)
+    nameManuallyEditedRef.current = true
+    slugManuallyEditedRef.current = true
     setForm({
       name: product.name,
       slug: product.slug,
@@ -520,6 +557,10 @@ export default function ProductsTab({
             value={form.productType ?? 'standard'}
             onChange={(e) => {
               const productType = e.target.value
+              if (productType === 'bundle' && !editingId) {
+                nameManuallyEditedRef.current = false
+                slugManuallyEditedRef.current = false
+              }
               setForm((prev) => ({
                 ...prev,
                 productType,
@@ -555,10 +596,16 @@ export default function ProductsTab({
                 const value = e.target.value
                 setForm((prev) => {
                   const next = { ...prev, [key]: value }
-                  if (key === 'name' && !editingId && (!prev.slug || prev.slug === slugify(prev.name))) {
+                  if (key === 'name') {
+                    nameManuallyEditedRef.current = true
+                    if (!editingId && (!prev.slug || prev.slug === slugify(prev.name))) {
+                      next.slug = slugify(value)
+                    }
+                  }
+                  if (key === 'slug') {
+                    slugManuallyEditedRef.current = true
                     next.slug = slugify(value)
                   }
-                  if (key === 'slug') next.slug = slugify(value)
                   return next
                 })
               }}
@@ -574,8 +621,29 @@ export default function ProductsTab({
               <Package size={16} /> Bundle products
             </p>
             <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/70">
-              Pick at least two standard products. Buyers pay the bundle price; license keys still come from each product’s key pool.
+              Pick at least two standard products. The bundle name and cover image are auto-generated from included products.
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                nameManuallyEditedRef.current = false
+                slugManuallyEditedRef.current = false
+                const autoName = buildBundleName(form.bundleItems, products)
+                if (!autoName) {
+                  setStatus('Add products to the bundle first')
+                  return
+                }
+                setForm((prev) => ({
+                  ...prev,
+                  name: autoName,
+                  slug: slugify(autoName),
+                }))
+                setStatus('Bundle name regenerated from products')
+              }}
+              className="mt-2 inline-flex items-center gap-1 rounded-full border border-violet-300 px-3 py-1.5 text-xs font-semibold text-violet-900 dark:border-violet-500/40 dark:text-violet-100"
+            >
+              <RefreshCw size={12} /> Regenerate name from products
+            </button>
 
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <select

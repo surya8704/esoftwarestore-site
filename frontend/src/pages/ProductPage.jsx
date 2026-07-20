@@ -90,7 +90,16 @@ export default function ProductPage() {
     return () => { cancelled = true }
   }, [slug, country, currency, locale])
 
-  if (!data?.product) {
+  const product = data?.product
+  const selected = product?.variants?.find((v) => v.id === variantId)
+  const basePrice = selected?.price ?? product?.displayPrice ?? product?.price ?? 0
+  const volumeTiers = config?.volumeDiscountTiers?.length ? config.volumeDiscountTiers : VOLUME_DISCOUNT_TIERS
+  const volumePricing = useMemo(
+    () => priceWithVolumeDiscount(basePrice, quantity, volumeTiers),
+    [basePrice, quantity, volumeTiers],
+  )
+
+  if (!product) {
     return (
       <div className="store-container py-20 text-center">
         <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-[#f97316]/20" />
@@ -99,14 +108,6 @@ export default function ProductPage() {
     )
   }
 
-  const { product } = data
-  const selected = product.variants?.find((v) => v.id === variantId)
-  const basePrice = selected?.price ?? product.displayPrice ?? product.price
-  const volumeTiers = config?.volumeDiscountTiers?.length ? config.volumeDiscountTiers : VOLUME_DISCOUNT_TIERS
-  const volumePricing = useMemo(
-    () => priceWithVolumeDiscount(basePrice, quantity, volumeTiers),
-    [basePrice, quantity, volumeTiers],
-  )
   const price = volumePricing.unitPrice
   const discount = discountPercent(price, product.originalPrice)
   const currentIndex = allProducts.findIndex((p) => p.slug === slug)
@@ -180,7 +181,7 @@ export default function ProductPage() {
             <p className="text-xs font-bold uppercase tracking-wider text-store-muted">
               {isBundle ? 'Bundle deal' : product.category}
             </p>
-            <h1 className="mt-2 text-xl font-extrabold leading-tight text-store-heading sm:text-2xl md:text-3xl">{product.name}</h1>
+            <h1 className="mt-2 break-words text-xl font-extrabold leading-tight text-store-heading sm:text-2xl md:text-3xl">{product.name}</h1>
 
             {isBundle && bundleContents.length ? (
               <div className="mt-4 rounded-2xl border border-store bg-store-hover/60 p-4">
