@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-import { BookOpen, LoaderCircle, Pencil, Plus, Save, Search, Trash2, X } from 'lucide-react'
-import { dashboardApi } from '../api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { BookOpen, ImagePlus, LoaderCircle, Pencil, Plus, Save, Search, Trash2, Upload, X } from 'lucide-react'
+import { dashboardApi, uploadGuideImage } from '../api'
 
 const emptyGuideForm = {
   title: '',
@@ -35,7 +35,9 @@ export default function GuidesTab() {
   const [form, setForm] = useState(emptyGuideForm)
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [status, setStatus] = useState('')
+  const fileInputRef = useRef(null)
 
   const load = async () => {
     const data = await dashboardApi('/api/admin/guides')
@@ -75,6 +77,34 @@ export default function GuidesTab() {
     setShowForm(false)
     setEditingId(null)
     setForm(emptyGuideForm)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setStatus('Please choose an image file')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setStatus('Image must be 5MB or smaller')
+      return
+    }
+
+    setUploading(true)
+    setStatus('')
+    try {
+      const data = await uploadGuideImage(file)
+      setForm((prev) => ({ ...prev, imageUrl: data.imageUrl }))
+      setStatus('Image uploaded')
+    } catch (err) {
+      setStatus(err.message)
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const save = async (e) => {
@@ -206,12 +236,48 @@ export default function GuidesTab() {
               onChange={(e) => setForm({ ...form, publishedAt: e.target.value })}
               className="rounded-2xl border border-slate-200 px-4 py-3 dark:border-white/10 dark:bg-white/5"
             />
-            <input
-              value={form.imageUrl}
-              onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-              placeholder="Image URL"
-              className="rounded-2xl border border-slate-200 px-4 py-3 dark:border-white/10 dark:bg-white/5 sm:col-span-2"
-            />
+          </div>
+          <div className="rounded-2xl border border-dashed border-slate-300 p-4 dark:border-white/10">
+            <span className="mb-2 block text-xs font-medium">Cover image</span>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="flex h-28 w-40 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
+                {form.imageUrl ? (
+                  <img src={form.imageUrl} alt="Guide cover preview" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus className="text-slate-400" size={24} />
+                )}
+              </div>
+              <div className="flex-1 space-y-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {uploading ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}
+                  {uploading ? 'Uploading...' : 'Upload image'}
+                </button>
+                <p className="text-xs text-slate-500">JPEG, PNG, WebP, or GIF. Max 5MB.</p>
+                <label>
+                  <span className="mb-1 block text-xs font-medium">Or paste image URL</span>
+                  <input
+                    value={form.imageUrl}
+                    onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                    placeholder="https://..."
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <input
               value={form.sourceUrl}
               onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}

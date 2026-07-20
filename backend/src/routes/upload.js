@@ -17,7 +17,24 @@ const extForMime = {
 
 export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
   const productsDir = path.join(uploadsDir, 'products')
+  const guidesDir = path.join(uploadsDir, 'guides')
   await fs.mkdir(productsDir, { recursive: true })
+  await fs.mkdir(guidesDir, { recursive: true })
+
+  async function saveImageUpload(file, subdir) {
+    if (!file) throw app.httpErrors.badRequest('No image file provided')
+    if (!ALLOWED_TYPES.has(file.mimetype)) {
+      throw app.httpErrors.badRequest('Only JPEG, PNG, WebP, and GIF images are allowed')
+    }
+
+    const ext = extForMime[file.mimetype] ?? 'jpg'
+    const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`
+    const dest = path.join(uploadsDir, subdir, filename)
+    await pipeline(file.file, createWriteStream(dest))
+
+    const imageUrl = `${apiPublicUrl}/uploads/${subdir}/${filename}`
+    return { imageUrl, filename }
+  }
 
   app.post('/api/upload/product-image', { preHandler: [app.requireStaff] }, async (request) => {
     if (request.user.role === 'vendor') {
@@ -32,18 +49,12 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
     }
 
     const file = await request.file()
-    if (!file) throw app.httpErrors.badRequest('No image file provided')
-    if (!ALLOWED_TYPES.has(file.mimetype)) {
-      throw app.httpErrors.badRequest('Only JPEG, PNG, WebP, and GIF images are allowed')
-    }
+    return saveImageUpload(file, 'products')
+  })
 
-    const ext = extForMime[file.mimetype] ?? 'jpg'
-    const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`
-    const dest = path.join(productsDir, filename)
-    await pipeline(file.file, createWriteStream(dest))
-
-    const imageUrl = `${apiPublicUrl}/uploads/products/${filename}`
-    return { imageUrl, filename }
+  app.post('/api/upload/guide-image', { preHandler: [app.requireAdmin] }, async (request) => {
+    const file = await request.file()
+    return saveImageUpload(file, 'guides')
   })
 
 

@@ -71,6 +71,23 @@ export async function uploadProductImage(file) {
   return data
 }
 
+export async function uploadGuideImage(file) {
+  const token = localStorage.getItem('dashboardToken')
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const response = await fetch(`${API_BASE}/api/upload/guide-image`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+
+  const text = await response.text()
+  const data = text ? JSON.parse(text) : {}
+  if (!response.ok) throw new Error(data.message ?? data.error ?? 'Image upload failed')
+  return data
+}
+
 export async function uploadProductLicenseKeys(productId, file) {
   const token = localStorage.getItem('dashboardToken')
   const formData = new FormData()
