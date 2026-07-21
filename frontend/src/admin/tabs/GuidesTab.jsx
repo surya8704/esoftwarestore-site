@@ -80,12 +80,20 @@ export default function GuidesTab() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const isAllowedImageFile = (file) => {
+    const type = String(file?.type || '').toLowerCase()
+    if (type.startsWith('image/')) return true
+    // Some browsers (esp. Windows) send empty/octet-stream for WebP
+    const ext = String(file?.name || '').split('.').pop()?.toLowerCase()
+    return ['jpg', 'jpeg', 'png', 'webp', 'wepg', 'gif'].includes(ext)
+  }
+
   const handleImageUpload = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      setStatus('Please choose an image file')
+    if (!isAllowedImageFile(file)) {
+      setStatus('Please choose a JPEG, PNG, WebP, or GIF image')
       return
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -251,7 +259,7 @@ export default function GuidesTab() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
                   onChange={handleImageUpload}
                   className="hidden"
                 />

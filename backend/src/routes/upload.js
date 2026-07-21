@@ -6,13 +6,49 @@ import { pipeline } from 'node:stream/promises'
 import { Vendor } from '../db/models.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 
-const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+const ALLOWED_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/pjpeg',
+  'image/png',
+  'image/webp',
+  'image/x-webp',
+  'image/gif',
+])
 
-const extForMime = {
+const MIME_BY_EXT = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  wepg: 'image/webp', // common typo of .webp
+  gif: 'image/gif',
+}
+
+const EXT_BY_MIME = {
   'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/pjpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  'image/x-webp': 'webp',
   'image/gif': 'gif',
+}
+
+function resolveImageType(file) {
+  const mime = String(file?.mimetype || '').toLowerCase().trim()
+  if (ALLOWED_TYPES.has(mime)) {
+    return { mime, ext: EXT_BY_MIME[mime] || 'jpg' }
+  }
+
+  const original = String(file?.filename || file?.fieldname || '')
+  const rawExt = path.extname(original).replace(/^\./, '').toLowerCase()
+  const mimeFromExt = MIME_BY_EXT[rawExt]
+  if (mimeFromExt) {
+    return { mime: mimeFromExt, ext: EXT_BY_MIME[mimeFromExt] || rawExt }
+  }
+
+  return null
 }
 
 export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
@@ -23,12 +59,12 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
 
   async function saveImageUpload(file, subdir) {
     if (!file) throw app.httpErrors.badRequest('No image file provided')
-    if (!ALLOWED_TYPES.has(file.mimetype)) {
+    const resolved = resolveImageType(file)
+    if (!resolved) {
       throw app.httpErrors.badRequest('Only JPEG, PNG, WebP, and GIF images are allowed')
     }
 
-    const ext = extForMime[file.mimetype] ?? 'jpg'
-    const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${ext}`
+    const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${resolved.ext}`
     const dest = path.join(uploadsDir, subdir, filename)
     await pipeline(file.file, createWriteStream(dest))
 
