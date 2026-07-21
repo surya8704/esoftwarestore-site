@@ -7,7 +7,7 @@ import {
   MAILTO_URL,
   SUPPORT_ADDRESS,
   SUPPORT_EMAIL,
-  SUPPORT_PHONE,
+  SUPPORT_PHONE_DISPLAY,
   WHATSAPP_URL,
 } from '../lib/contact'
 import { useApp } from '../context/AppContext'
@@ -349,7 +349,7 @@ export default function Layout({ children }) {
               <li><a href={MAILTO_URL} className="hover:text-[#f97316] transition-colors">{SUPPORT_EMAIL}</a></li>
               <li>
                 <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="hover:text-[#f97316] transition-colors">
-                  WhatsApp: {SUPPORT_PHONE}
+                  WhatsApp: {SUPPORT_PHONE_DISPLAY}
                 </a>
               </li>
               <li>{SUPPORT_ADDRESS}</li>

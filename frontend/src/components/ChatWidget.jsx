@@ -17,7 +17,7 @@ import { api } from '../lib/api'
 import {
   MAILTO_URL,
   SUPPORT_EMAIL,
-  SUPPORT_PHONE,
+  SUPPORT_PHONE_DISPLAY,
   WHATSAPP_URL,
 } from '../lib/contact'
 
@@ -123,7 +123,7 @@ export default function ChatWidget() {
         ...m,
         {
           role: 'bot',
-          text: `Sorry, I couldn't connect right now. Email us at ${SUPPORT_EMAIL} or WhatsApp ${SUPPORT_PHONE} for immediate help.`,
+          text: `Sorry, I couldn't connect right now. Email us at ${SUPPORT_EMAIL} or WhatsApp ${SUPPORT_PHONE_DISPLAY} for immediate help.`,
           time: Date.now(),
         },
       ])

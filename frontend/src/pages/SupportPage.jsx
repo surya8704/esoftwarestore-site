@@ -6,7 +6,7 @@ import {
   MAILTO_URL,
   SUPPORT_ADDRESS,
   SUPPORT_EMAIL,
-  SUPPORT_PHONE,
+  SUPPORT_PHONE_DISPLAY,
   WHATSAPP_URL,
 } from '../lib/contact'
 import SEO from '../components/SEO'
@@ -87,7 +87,7 @@ export default function SupportPage() {
                 rel="noreferrer"
                 className="mt-1 inline-flex items-center gap-2 font-medium text-[#f97316] hover:underline"
               >
-                <MessageCircle size={16} /> {SUPPORT_PHONE}
+                <MessageCircle size={16} /> {SUPPORT_PHONE_DISPLAY}
               </a>
             </li>
             <li>

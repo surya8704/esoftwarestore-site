@@ -9,7 +9,7 @@ Key policies:
 - Orders also visible on the customer's account page under "My Account" > Orders
 - 30-day money-back guarantee on unactivated licenses
 - All products are genuine and sourced from reputable distributors
-- Support available 24/7 via email (info@esoftwarestore.com) and WhatsApp (+1 631-505-3545)
+- Support available 24/7 via email (info@esoftwarestore.com) and WhatsApp (+447520642304)
 - For activation: use the key from the order email at the official vendor download/activation page
 - Refunds: contact support with order number; unactivated licenses qualify within 30 days
 - Payment: secure checkout via Razorpay; confirmation code provided after purchase
@@ -51,7 +51,7 @@ const FAQ_RULES = [
   {
     match: (m) => /whatsapp|contact|human|agent|speak|call/i.test(m),
     reply:
-      'Reach our team 24/7 via email at info@esoftwarestore.com or WhatsApp at 16315053545. Share your order number for faster help. You can also visit our Support page for guides.',
+      'Reach our team 24/7 via email at info@esoftwarestore.com or WhatsApp at +447520642304. Share your order number for faster help. You can also visit our Support page for guides.',
   },
   {
     match: (m) => /price|discount|coupon|cheap/i.test(m),
@@ -68,7 +68,7 @@ const FAQ_RULES = [
 function getFaqReply(message) {
   const rule = FAQ_RULES.find((r) => r.match(message))
   if (rule) return rule.reply
-  return 'Thanks for reaching out! For personalized help, email info@esoftwarestore.com or WhatsApp 16315053545 — include your order number if you have one. You can also visit our Support page for guides.'
+  return 'Thanks for reaching out! For personalized help, email info@esoftwarestore.com or WhatsApp +447520642304 — include your order number if you have one. You can also visit our Support page for guides.'
 }
 
 export async function getAiSupportReply(message, history = [], context = FAQ_CONTEXT) {

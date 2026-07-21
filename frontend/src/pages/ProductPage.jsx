@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Heart, Package, ShoppingCart, ZoomIn } from 'lucide-react'
 import { api, formatPrice, trackPage, discountPercent, soldRecentlyCount, formatSoldRecently } from '../lib/api'
-import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_URL } from '../lib/contact'
+import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE_DISPLAY, WHATSAPP_URL } from '../lib/contact'
 import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/products'
 import { getSimilarProducts } from '../lib/similarProducts'
 import { VOLUME_DISCOUNT_TIERS, priceWithVolumeDiscount, activeVolumeTierMinQty } from '../lib/volumeTiers'
@@ -408,7 +408,7 @@ export default function ProductPage() {
                   For support contact{' '}
                   <a href={MAILTO_URL} className="text-[#f97316]">{SUPPORT_EMAIL}</a>
                   {' '}or{' '}
-                  <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="text-[#f97316]">WhatsApp {SUPPORT_PHONE}</a>.
+                  <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="text-[#f97316]">WhatsApp {SUPPORT_PHONE_DISPLAY}</a>.
                 </p>
               </div>
             ) : null}
