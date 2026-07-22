@@ -54,8 +54,10 @@ function resolveImageType(file) {
 export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
   const productsDir = path.join(uploadsDir, 'products')
   const guidesDir = path.join(uploadsDir, 'guides')
+  const trustBadgesDir = path.join(uploadsDir, 'trust-badges')
   await fs.mkdir(productsDir, { recursive: true })
   await fs.mkdir(guidesDir, { recursive: true })
+  await fs.mkdir(trustBadgesDir, { recursive: true })
 
   async function saveImageUpload(file, subdir) {
     if (!file) throw app.httpErrors.badRequest('No image file provided')
@@ -91,6 +93,11 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
   app.post('/api/upload/guide-image', { preHandler: [app.requireAdmin] }, async (request) => {
     const file = await request.file()
     return saveImageUpload(file, 'guides')
+  })
+
+  app.post('/api/upload/trust-badge-image', { preHandler: [app.requireAdmin] }, async (request) => {
+    const file = await request.file()
+    return saveImageUpload(file, 'trust-badges')
   })
 
 

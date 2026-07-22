@@ -217,6 +217,20 @@ export async function adminRoutes(app) {
       showOnHome: z.boolean().optional(),
       showOnProduct: z.boolean().optional(),
       showOnCart: z.boolean().optional(),
+      displayMode: z.enum(['builtin', 'custom', 'multiple']).optional(),
+      customBadgeId: z.string().trim().max(64).optional(),
+      activeCustomBadgeIds: z.array(z.string().trim().max(64)).max(6).optional(),
+      customBadges: z
+        .array(
+          z.object({
+            id: z.string().trim().min(1).max(64),
+            label: z.string().trim().max(60).optional().default(''),
+            imageUrl: z.string().trim().url().max(500),
+            createdAt: z.string().optional(),
+          }),
+        )
+        .max(20)
+        .optional(),
     })
     const payload = schema.parse(request.body ?? {})
     const trustBadge = await updateTrustBadgeSettings(payload)

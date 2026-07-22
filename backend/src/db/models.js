@@ -394,6 +394,20 @@ const storeSettingsSchema = new mongoose.Schema({
     showOnHome: { type: Boolean, default: true },
     showOnProduct: { type: Boolean, default: true },
     showOnCart: { type: Boolean, default: true },
+    displayMode: { type: String, maxlength: 20, default: 'builtin' },
+    customBadgeId: { type: String, maxlength: 64, default: '' },
+    activeCustomBadgeIds: { type: [String], default: [] },
+    customBadges: {
+      type: [
+        {
+          id: { type: String, required: true },
+          label: { type: String, maxlength: 60, default: '' },
+          imageUrl: { type: String, maxlength: 500, required: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
   },
   createdAt: { type: Date, default: Date.now, required: true },
   updatedAt: { type: Date, default: Date.now },

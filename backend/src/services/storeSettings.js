@@ -24,6 +24,36 @@ export const DEFAULT_TRUST_BADGE = {
   showOnHome: true,
   showOnProduct: true,
   showOnCart: true,
+  displayMode: 'builtin',
+  customBadgeId: '',
+  activeCustomBadgeIds: [],
+  customBadges: [],
+}
+
+function normalizeCustomBadge(entry) {
+  const id = String(entry?.id || '').trim()
+  const imageUrl = String(entry?.imageUrl || '').trim()
+  if (!id || !imageUrl) return null
+  return {
+    id: id.slice(0, 64),
+    label: String(entry?.label || '').trim().slice(0, 60),
+    imageUrl: imageUrl.slice(0, 500),
+    createdAt: entry?.createdAt ? new Date(entry.createdAt).toISOString() : new Date().toISOString(),
+  }
+}
+
+function normalizeCustomBadges(list) {
+  const items = Array.isArray(list) ? list : []
+  const seen = new Set()
+  const out = []
+  for (const item of items) {
+    const badge = normalizeCustomBadge(item)
+    if (!badge || seen.has(badge.id)) continue
+    seen.add(badge.id)
+    out.push(badge)
+    if (out.length >= 20) break
+  }
+  return out
 }
 
 function clamp(n, min, max) {
@@ -37,6 +67,18 @@ function normalizeTrustBadge(raw = {}) {
   const growthMin = Math.floor(Number(raw.dailyGrowthMin))
   const growthMax = Math.floor(Number(raw.dailyGrowthMax))
   const style = styleIds.has(raw.style) ? raw.style : DEFAULT_TRUST_BADGE.style
+  const customBadges = normalizeCustomBadges(raw.customBadges)
+  const badgeIds = new Set(customBadges.map((b) => b.id))
+  const displayMode = ['builtin', 'custom', 'multiple'].includes(raw.displayMode)
+    ? raw.displayMode
+    : DEFAULT_TRUST_BADGE.displayMode
+  const customBadgeId = badgeIds.has(String(raw.customBadgeId || '').trim())
+    ? String(raw.customBadgeId).trim()
+    : customBadges[0]?.id || ''
+  const activeCustomBadgeIds = (Array.isArray(raw.activeCustomBadgeIds) ? raw.activeCustomBadgeIds : [])
+    .map((id) => String(id || '').trim())
+    .filter((id) => badgeIds.has(id))
+    .slice(0, 6)
 
   return {
     enabled: raw.enabled !== false,
@@ -51,6 +93,15 @@ function normalizeTrustBadge(raw = {}) {
     showOnHome: raw.showOnHome !== false,
     showOnProduct: raw.showOnProduct !== false,
     showOnCart: raw.showOnCart !== false,
+    displayMode: customBadges.length === 0 && displayMode !== 'builtin' ? 'builtin' : displayMode,
+    customBadgeId,
+    activeCustomBadgeIds:
+      activeCustomBadgeIds.length > 0
+        ? activeCustomBadgeIds
+        : customBadgeId
+          ? [customBadgeId]
+          : customBadges.slice(0, 3).map((b) => b.id),
+    customBadges,
   }
 }
 
@@ -108,8 +159,20 @@ export function computeDynamicReviewCount({
 
 export function publicTrustBadge(settings) {
   const badge = normalizeTrustBadge(settings?.trustBadge)
+  const byId = new Map(badge.customBadges.map((item) => [item.id, item]))
+  const customImageUrl = badge.customBadgeId ? byId.get(badge.customBadgeId)?.imageUrl || null : null
+  const customImageUrls = badge.activeCustomBadgeIds
+    .map((id) => byId.get(id)?.imageUrl)
+    .filter(Boolean)
+
   if (!badge.enabled) {
-    return { ...badge, reviewCount: badge.baselineReviews, enabled: false }
+    return {
+      ...badge,
+      reviewCount: badge.baselineReviews,
+      enabled: false,
+      customImageUrl,
+      customImageUrls,
+    }
   }
   const min = Math.min(badge.dailyGrowthMin, badge.dailyGrowthMax)
   const max = Math.max(badge.dailyGrowthMin, badge.dailyGrowthMax)
@@ -123,6 +186,8 @@ export function publicTrustBadge(settings) {
       dailyGrowthMax: max,
       growthStartDate: badge.growthStartDate,
     }),
+    customImageUrl,
+    customImageUrls,
   }
 }
 

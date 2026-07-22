@@ -87,6 +87,21 @@ function SealIcon({ style }) {
   return <span className="trust-seal-icon" aria-hidden>🤝</span>
 }
 
+function resolveCustomImages(badge) {
+  const byId = new Map((badge?.customBadges ?? []).map((item) => [item.id, item]))
+  const customImageUrl =
+    badge?.customImageUrl ||
+    (badge?.customBadgeId ? byId.get(badge.customBadgeId)?.imageUrl : null) ||
+    null
+  const customImageUrls =
+    badge?.customImageUrls?.length > 0
+      ? badge.customImageUrls
+      : (badge?.activeCustomBadgeIds ?? [])
+          .map((id) => byId.get(id)?.imageUrl)
+          .filter(Boolean)
+  return { customImageUrl, customImageUrls }
+}
+
 /**
  * @param {'home'|'product'|'cart'} placement
  * @param {'default'|'compact'|'preview'} [size]
@@ -116,18 +131,49 @@ export default function TrustBadge({
     if (placement === 'cart' && badge.showOnCart === false) return null
   }
 
+  const compact = size === 'compact'
+  const displayMode = badge.displayMode || 'builtin'
+  const { customImageUrl, customImageUrls } = resolveCustomImages(badge)
+  const previewClass = size === 'preview' ? 'trust-badge--preview' : ''
+  const compactClass = compact ? 'trust-badge--compact' : ''
+
+  if (displayMode === 'custom' && customImageUrl) {
+    return (
+      <div
+        className={['trust-badge', 'trust-badge--custom-image', compactClass, previewClass, className].filter(Boolean).join(' ')}
+        role="img"
+        aria-label={badge.title || 'Trust badge'}
+      >
+        <img src={customImageUrl} alt={badge.title || 'Trust badge'} className="trust-badge-custom-img" />
+      </div>
+    )
+  }
+
+  if (displayMode === 'multiple' && customImageUrls.length > 0) {
+    return (
+      <div
+        className={['trust-badge', 'trust-badge--custom-multiple', compactClass, previewClass, className].filter(Boolean).join(' ')}
+        role="group"
+        aria-label="Trust badges"
+      >
+        {customImageUrls.map((url) => (
+          <img key={url} src={url} alt="" className="trust-badge-custom-img" />
+        ))}
+      </div>
+    )
+  }
+
   const style = badge.style || 'simple'
   const rating = Number(badge.rating) || 4.9
   const title = badge.title || 'BEST SERVICE'
   const tagline = badge.tagline || 'Trusted by thousands of buyers'
-  const compact = size === 'compact'
   // Keep sticky / tight CTA areas as a clean strip even when seal styles are selected.
   const renderStyle = compact ? 'simple' : style
   const classes = [
     'trust-badge',
     `trust-badge--${renderStyle}`,
-    compact ? 'trust-badge--compact' : '',
-    size === 'preview' ? 'trust-badge--preview' : '',
+    compactClass,
+    previewClass,
     className,
   ]
     .filter(Boolean)

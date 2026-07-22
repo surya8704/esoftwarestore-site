@@ -779,6 +779,39 @@ body {
   filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.12));
 }
 
+.trust-badge--custom-image {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.trust-badge--custom-multiple {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.trust-badge-custom-img {
+  display: block;
+  max-height: 3.25rem;
+  width: auto;
+  max-width: min(100%, 12rem);
+  object-fit: contain;
+}
+
+.trust-badge--compact.trust-badge--custom-image .trust-badge-custom-img,
+.trust-badge--compact.trust-badge--custom-multiple .trust-badge-custom-img {
+  max-height: 2.25rem;
+  max-width: min(100%, 8rem);
+}
+
+.trust-badge--preview.trust-badge--custom-image .trust-badge-custom-img,
+.trust-badge--preview.trust-badge--custom-multiple .trust-badge-custom-img {
+  max-height: 5rem;
+  max-width: min(100%, 14rem);
+}
+
 /* Category chip */
 .category-chip {
   display: inline-flex;
