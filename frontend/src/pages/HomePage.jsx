@@ -5,6 +5,7 @@ import { Grid2x2, Grid3x3, LayoutGrid, Shield, Sparkles, Zap } from 'lucide-reac
 import { trackPage } from '../lib/api'
 import { getInstantProducts, loadProducts } from '../lib/products'
 import { sortByDefaultCatalogOrder } from '../lib/catalogSort'
+import { searchProducts } from '../lib/productSearch'
 import usePageSize from '../hooks/usePageSize'
 import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
@@ -58,15 +59,15 @@ export default function HomePage() {
     if (category !== ALL_CATEGORIES) {
       list = list.filter((p) => p.category?.toLowerCase() === category.toLowerCase())
     }
-    if (query) {
-      const q = query.toLowerCase()
-      list = list.filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          p.description?.toLowerCase().includes(q) ||
-          p.category?.toLowerCase().includes(q),
-      )
+
+    const trimmedQuery = query.trim()
+    if (trimmedQuery) {
+      const ranked = searchProducts(list, trimmedQuery, {
+        sortByRelevance: sort === 'default',
+      })
+      list = ranked.map((row) => row.product)
     }
+
     switch (sort) {
       case 'popular':
         list.sort((a, b) => (b.stock < 10 ? 1 : 0) - (a.stock < 10 ? 1 : 0))
@@ -84,7 +85,7 @@ export default function HomePage() {
         list.sort((a, b) => (b.displayPrice ?? b.price) - (a.displayPrice ?? a.price))
         break
       default:
-        list = sortByDefaultCatalogOrder(list)
+        if (!trimmedQuery) list = sortByDefaultCatalogOrder(list)
         break
     }
     return list
@@ -123,6 +124,10 @@ export default function HomePage() {
     else params.set('category', cat)
     params.delete('page')
     setSearchParams(params)
+  }
+
+  const clearFilters = () => {
+    setSearchParams({})
   }
 
   const goToPage = (nextPage) => {
@@ -284,7 +289,7 @@ export default function HomePage() {
           <div className="mt-16 text-center">
             <p className="text-lg font-semibold text-store-heading">No products found</p>
             <p className="mt-2 text-sm text-store-muted">Try a different search or category.</p>
-            <button type="button" onClick={() => setCategory(ALL_CATEGORIES)} className="btn-store-primary mt-6">
+            <button type="button" onClick={clearFilters} className="btn-store-primary mt-6">
               View all products
             </button>
           </div>

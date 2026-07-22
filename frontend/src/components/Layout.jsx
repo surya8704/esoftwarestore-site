@@ -298,15 +298,22 @@ export default function Layout({ children }) {
               <X size={20} />
             </button>
           </div>
-          <form onSubmit={runSearch} role="search">
+          <form onSubmit={runSearch} role="search" className="space-y-3">
             <input
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Start typing to see products..."
+              placeholder={t('searchPlaceholder')}
               className="store-input"
               aria-label="Search products"
             />
+            <button
+              type="submit"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f97316] to-[#ea580c] px-5 py-3 text-sm font-semibold text-white hover:brightness-105"
+            >
+              <Search size={18} />
+              Search
+            </button>
           </form>
         </div>
       ) : null}
