@@ -17,6 +17,7 @@ import ChatWidget from './ChatWidget'
 import MobileBottomNav from './MobileBottomNav'
 import StoreLogo from './StoreLogo'
 import AnnouncementMarquee from './AnnouncementMarquee'
+import SearchSuggest from './SearchSuggest'
 
 const FALLBACK_CATEGORIES = ['Windows', 'Design']
 
@@ -33,6 +34,9 @@ export default function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [catalog, setCatalog] = useState(() => getInstantProducts())
   const [categories, setCategories] = useState(() => {
     const cats = [...new Set(getInstantProducts().map((p) => p.category))].filter(Boolean).sort()
     return cats.length ? cats : FALLBACK_CATEGORIES
@@ -54,6 +58,8 @@ export default function Layout({ children }) {
   useEffect(() => {
     setMenuOpen(false)
     setSearchOpen(false)
+    setSuggestOpen(false)
+    setSearchFocused(false)
   }, [location.pathname, location.search])
 
   useEffect(() => {
@@ -63,11 +69,13 @@ export default function Layout({ children }) {
   useEffect(() => {
     const fromCache = getInstantProducts()
     if (fromCache.length) {
+      setCatalog(fromCache)
       const cats = [...new Set(fromCache.map((p) => p.category))].filter(Boolean).sort()
       if (cats.length) setCategories(cats)
     }
 
     loadProducts({ country, currency, locale }, (products) => {
+      setCatalog(products)
       const cats = [...new Set(products.map((p) => p.category))].filter(Boolean).sort()
       if (cats.length) setCategories(cats)
     }).catch(() => {})
@@ -76,12 +84,14 @@ export default function Layout({ children }) {
   const closeMenus = useCallback(() => {
     setMenuOpen(false)
     setSearchOpen(false)
+    setSuggestOpen(false)
+    setSearchFocused(false)
   }, [])
 
-  const runSearch = (e) => {
+  const runSearch = (e, queryOverride) => {
     e?.preventDefault()
     closeMenus()
-    const q = searchQuery.trim()
+    const q = String(queryOverride ?? searchQuery).trim()
     const params = new URLSearchParams()
     if (q) params.set('q', q)
     if (activeCategory && !q) params.set('category', activeCategory)
@@ -139,19 +149,44 @@ export default function Layout({ children }) {
 
           <StoreLogo onClick={closeMenus} />
 
-          <form onSubmit={runSearch} className="hidden flex-1 md:flex" role="search">
+          <form onSubmit={runSearch} className="relative hidden flex-1 md:flex" role="search">
             <div className="flex w-full max-w-xl overflow-hidden rounded-full border border-store bg-store-subtle shadow-inner transition-shadow focus-within:border-[#f97316]/50 focus-within:shadow-md">
               <input
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setSuggestOpen(true)
+                }}
+                onFocus={() => {
+                  setSearchFocused(true)
+                  setSuggestOpen(true)
+                }}
+                onBlur={() => {
+                  window.setTimeout(() => {
+                    setSearchFocused(false)
+                    setSuggestOpen(false)
+                  }, 180)
+                }}
                 placeholder={t('searchPlaceholder')}
                 className="flex-1 bg-transparent px-5 py-2.5 text-sm text-store-body outline-none placeholder:text-store-muted"
                 aria-label="Search products"
+                aria-autocomplete="list"
+                autoComplete="off"
               />
               <button type="submit" className="m-1 rounded-full bg-gradient-to-r from-[#f97316] to-[#ea580c] px-5 text-white hover:brightness-105 transition-all" aria-label="Search">
                 <Search size={18} />
               </button>
             </div>
+            <SearchSuggest
+              query={searchQuery}
+              products={catalog}
+              currency={currency}
+              open={suggestOpen && searchFocused}
+              onClose={() => setSuggestOpen(false)}
+              onPick={closeMenus}
+              onViewAll={(q) => runSearch(null, q)}
+              className="max-w-xl"
+            />
           </form>
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -302,10 +337,26 @@ export default function Layout({ children }) {
             <input
               autoFocus
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setSuggestOpen(true)
+              }}
+              onFocus={() => setSuggestOpen(true)}
               placeholder={t('searchPlaceholder')}
               className="store-input"
               aria-label="Search products"
+              aria-autocomplete="list"
+              autoComplete="off"
+            />
+            <SearchSuggest
+              query={searchQuery}
+              products={catalog}
+              currency={currency}
+              open={suggestOpen}
+              mobile
+              onClose={() => setSuggestOpen(false)}
+              onPick={closeMenus}
+              onViewAll={(q) => runSearch(null, q)}
             />
             <button
               type="submit"
