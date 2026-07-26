@@ -186,7 +186,10 @@ export default function ProductPage() {
             >
               {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
               <ProductImage
-                product={product}
+                product={{
+                  ...product,
+                  imageUrl: (selected?.imageUrl && String(selected.imageUrl).trim()) || product.imageUrl,
+                }}
                 alt={displayName}
                 visualAccent={product.visualAccent ?? 'from-slate-400 to-slate-600'}
                 fallbackLabel={product.category}
@@ -409,7 +412,7 @@ export default function ProductPage() {
                 <h3 className="font-bold text-store-heading">
                   {(product.shippingTitle || '').trim() || DEFAULT_SHIPPING_TITLE}
                 </h3>
-                <ul className="mt-3 list-disc space-y-2 pl-5">
+                <ul className="product-desc-list product-desc-list--bullets mt-3">
                   {resolveShippingBullets(product).map((bullet, index) => (
                     <li key={`shipping-${index}`}>{bullet}</li>
                   ))}
@@ -417,7 +420,7 @@ export default function ProductPage() {
               </div>
             ) : null}
             {tab === 'detail' ? (
-              <ul className="list-disc space-y-2 pl-5">
+              <ul className="product-desc-list product-desc-list--bullets">
                 {selected ? <li>Edition: {selected.tierLabel || selected.name}</li> : null}
                 <li>License type: {product.licenseType}</li>
                 <li>Category: {product.category}</li>

@@ -64,13 +64,14 @@ const productSchema = z
     shippingText: z.string().max(4000).optional().default(''),
     deliveryText: z.string().max(2000).optional().default(''),
     shippingBullets: z
-      .array(z.string().trim().max(500))
-      .max(20)
+      .array(z.string().trim().max(2000))
+      .max(40)
       .optional()
       .default([])
       .transform((items) => (items ?? []).map((item) => String(item || '').trim()).filter(Boolean)),
     hidePrice: z.boolean().optional(),
     hideCart: z.boolean().optional(),
+    showOnHomepage: z.boolean().optional(),
     vendorId: z
       .string()
       .optional()
@@ -110,6 +111,9 @@ const normalizeProduct = (product) => {
     originalPrice: Number(p.originalPrice),
     stock: Number(p.stock),
     vendorId: p.vendorId?.toString?.() ?? p.vendorId,
+    hidePrice: Boolean(p.hidePrice),
+    hideCart: Boolean(p.hideCart),
+    showOnHomepage: p.showOnHomepage !== false,
     allowedCountries: parseJsonList(p.allowedCountries) ?? [],
     blockedCountries: parseJsonList(p.blockedCountries) ?? [],
     shippingBullets: Array.isArray(p.shippingBullets)
@@ -155,6 +159,7 @@ function productWriteFields(payload) {
     shippingBullets: payload.shippingBullets ?? [],
     hidePrice: payload.hidePrice ?? false,
     hideCart: payload.hideCart ?? false,
+    showOnHomepage: payload.showOnHomepage !== false,
     allowedCountries: encodeCountryList(payload.allowedCountries),
     blockedCountries: encodeCountryList(payload.blockedCountries),
   }

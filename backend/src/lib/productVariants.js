@@ -19,6 +19,14 @@ export const variantInputSchema = z.object({
     .max(50000)
     .optional()
     .transform((v) => (v == null ? '' : String(v))),
+  imageUrl: z
+    .string()
+    .max(1000)
+    .optional()
+    .transform((v) => (v == null ? '' : String(v).trim()))
+    .refine((v) => !v || v.startsWith('/') || /^https?:\/\//i.test(v) || v.startsWith('data:image/'), {
+      message: 'Variant image URL must be empty, a site path, or a full http(s) URL',
+    }),
   tierLabel: z
     .string()
     .trim()
@@ -51,6 +59,7 @@ export function normalizeVariant(variant) {
     originalPrice: Number(v.originalPrice),
     stock: Number(v.stock),
     description: String(v.description ?? ''),
+    imageUrl: String(v.imageUrl ?? '').trim(),
     tierMinQty: Number(v.tierMinQty) || 1,
     isDefault: Boolean(v.isDefault),
     active: v.active !== false,
@@ -108,6 +117,7 @@ export async function syncProductVariants(product, variantsInput) {
           originalPrice: Number(product.originalPrice || product.price),
           stock: Math.max(0, Number(product.stock) || 0),
           description: String(product.description || ''),
+          imageUrl: '',
           tierLabel: '',
           isDefault: true,
           active: true,
@@ -141,6 +151,7 @@ export async function syncProductVariants(product, variantsInput) {
         row.originalPrice = item.originalPrice
         row.stock = item.stock
         row.description = item.description ?? ''
+        row.imageUrl = item.imageUrl ?? ''
         row.tierLabel = item.tierLabel || item.name
         row.tierMinQty = 1
         row.isDefault = item.isDefault
@@ -159,6 +170,7 @@ export async function syncProductVariants(product, variantsInput) {
       originalPrice: item.originalPrice,
       stock: item.stock,
       description: item.description ?? '',
+      imageUrl: item.imageUrl ?? '',
       tierLabel: item.tierLabel || item.name,
       tierMinQty: 1,
       isDefault: item.isDefault,

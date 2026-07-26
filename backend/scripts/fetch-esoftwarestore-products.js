@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { extractBulletLines, mergeProductDescriptions } from '../src/lib/htmlContent.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.join(__dirname, '../src/data/esoftwarestore-catalog.json')
@@ -14,22 +15,6 @@ const ACCENTS = [
   'from-amber-500 to-orange-400',
   'from-rose-500 to-pink-400',
 ]
-
-function stripHtml(html = '') {
-  return html
-    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '\n- ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim()
-}
 
 function toRupees(minor) {
   return Math.max(1, Math.round(Number(minor) / 100))
@@ -58,7 +43,10 @@ function transform(product, index) {
   const regular = toRupees(prices.regular_price)
   const originalPrice = regular > price ? regular : Math.round(price * 1.35)
   const category = mapCategory(product.categories?.[0]?.name)
-  const description = stripHtml(product.short_description || product.description)
+  // Prefer full description; merge short intro when it adds unique content.
+  // Never truncate — keep full bullets and body copy.
+  const description = mergeProductDescriptions(product.short_description, product.description)
+  const shippingBullets = extractBulletLines(description)
 
   return {
     externalId: product.id,
@@ -73,6 +61,7 @@ function transform(product, index) {
     imageUrl: product.images?.[0]?.src ?? null,
     visualAccent: ACCENTS[index % ACCENTS.length],
     description: description || product.name,
+    shippingBullets,
     downloadUrl: product.permalink,
     sku: product.sku || null,
     onSale: Boolean(product.on_sale),
@@ -88,6 +77,36 @@ async function fetchPage(page, perPage = 100) {
   return response.json()
 }
 
+/** Store API list sometimes trims HTML — pull full product by id when body looks short. */
+async function enrichProduct(product) {
+  const fullHtml = String(product.description || '')
+  const shortHtml = String(product.short_description || '')
+  const looksTruncated =
+    !fullHtml ||
+    fullHtml.length < 80 ||
+    (/&\.\.\.|…|\.\.\.\s*$/.test(fullHtml) && fullHtml.length < 400)
+
+  if (!looksTruncated && (fullHtml.length >= shortHtml.length || fullHtml.length > 200)) {
+    return product
+  }
+
+  try {
+    const response = await fetch(`${BASE}/${product.id}`, {
+      headers: { 'User-Agent': 'eSoftwareStore-Importer/1.0' },
+    })
+    if (!response.ok) return product
+    const detail = await response.json()
+    return {
+      ...product,
+      description: detail.description || product.description,
+      short_description: detail.short_description || product.short_description,
+      images: detail.images?.length ? detail.images : product.images,
+    }
+  } catch {
+    return product
+  }
+}
+
 async function fetchAll() {
   const all = []
   for (let page = 1; page <= 20; page += 1) {
@@ -99,9 +118,23 @@ async function fetchAll() {
   }
 
   const unique = [...new Map(all.map((p) => [p.slug, p])).values()]
-  const catalog = unique.map(transform)
+  process.stdout.write(`Enriching ${unique.length} product descriptions…\n`)
+  const enriched = []
+  for (let i = 0; i < unique.length; i += 1) {
+    enriched.push(await enrichProduct(unique[i]))
+    if ((i + 1) % 25 === 0 || i === unique.length - 1) {
+      process.stdout.write(`  enriched ${i + 1}/${unique.length}\n`)
+    }
+  }
+
+  const catalog = enriched.map(transform)
   fs.writeFileSync(OUT, JSON.stringify(catalog, null, 2))
-  process.stdout.write(`Saved ${catalog.length} products → ${OUT}\n`)
+  const withBullets = catalog.filter((p) => (p.shippingBullets?.length ?? 0) > 0).length
+  const avgLen = Math.round(catalog.reduce((s, p) => s + (p.description?.length || 0), 0) / Math.max(catalog.length, 1))
+  process.stdout.write(
+    `Saved ${catalog.length} products → ${OUT}\n` +
+      `  avg description length: ${avgLen} chars · ${withBullets} with extracted bullets\n`,
+  )
   return catalog.length
 }
 
@@ -127,7 +160,10 @@ function importFromCachedFiles() {
 }
 
 try {
-  const ok = await fetchAll().catch(() => null)
+  const ok = await fetchAll().catch((err) => {
+    process.stderr.write(`Live fetch failed: ${err.message}\n`)
+    return null
+  })
   if (!ok) {
     if (!importFromCachedFiles()) {
       process.stderr.write('Could not fetch products online or from cache.\n')

@@ -53,6 +53,14 @@ export default function ProductSeoPanel({
   const [openSections, setOpenSections] = useState({ basic: true, additional: false, title: false, content: false })
   const [editSnippet, setEditSnippet] = useState(false)
 
+  const slugify = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 120)
+
   const analysis = useMemo(
     () =>
       analyzeProductSeo({
@@ -85,6 +93,10 @@ export default function ProductSeoPanel({
 
   const toggleSection = (id) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const updateSlug = (raw) => {
+    onChange({ slug: slugify(raw) })
   }
 
   return (
@@ -134,7 +146,14 @@ export default function ProductSeoPanel({
                   {editSnippet ? 'Hide snippet editor' : 'Edit Snippet'}
                 </button>
               </div>
-              <p className="truncate text-xs text-emerald-700">{analysis.preview.url}</p>
+              <button
+                type="button"
+                onClick={() => setEditSnippet(true)}
+                className="truncate text-left text-xs text-emerald-700 hover:underline"
+                title="Edit product URL"
+              >
+                {analysis.preview.url}
+              </button>
               <p className="mt-1 text-base font-semibold leading-snug text-[#1a0dab] line-clamp-2">
                 {analysis.preview.title}
               </p>
@@ -143,6 +162,24 @@ export default function ProductSeoPanel({
 
             {editSnippet ? (
               <div className="grid gap-3 sm:grid-cols-2">
+                <label className="sm:col-span-2">
+                  <span className="mb-1 block text-xs font-medium">Product URL</span>
+                  <div className="flex overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
+                    <span className="flex shrink-0 items-center bg-slate-100 px-3 text-xs text-slate-500 dark:bg-white/10">
+                      esoftwarestore.com/product/
+                    </span>
+                    <input
+                      value={slug ?? ''}
+                      onChange={(e) => updateSlug(e.target.value)}
+                      onBlur={(e) => updateSlug(e.target.value)}
+                      placeholder="windows-11-pro"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none dark:bg-white/5"
+                    />
+                  </div>
+                  <span className="mt-1 block text-[11px] text-slate-400">
+                    Letters, numbers, and hyphens only. Changing this updates the live product link after save.
+                  </span>
+                </label>
                 <label className="sm:col-span-2">
                   <span className="mb-1 block text-xs font-medium">SEO title</span>
                   <input
@@ -249,6 +286,20 @@ export default function ProductSeoPanel({
 
         {tab === 'advanced' ? (
           <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-200">Edit product URL</span>
+              <div className="flex overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
+                <span className="flex shrink-0 items-center bg-slate-100 px-3 text-xs text-slate-500 dark:bg-white/10">
+                  /product/
+                </span>
+                <input
+                  value={slug ?? ''}
+                  onChange={(e) => updateSlug(e.target.value)}
+                  placeholder="windows-11-pro"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none dark:bg-white/5"
+                />
+              </div>
+            </label>
             <p>
               Canonical URL:{' '}
               <span className="font-medium text-slate-800 dark:text-slate-100">

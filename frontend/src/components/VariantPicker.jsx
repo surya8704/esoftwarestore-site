@@ -65,26 +65,35 @@ export default function VariantPicker({
               {active ? (
                 <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#f97316]" aria-hidden />
               ) : null}
-              <span className="block text-sm font-semibold text-store-heading">
-                {v.tierLabel || v.name}
-              </span>
-              {!hidePrice ? (
-                <span className="mt-1 flex flex-wrap items-baseline gap-2 text-sm">
-                  <span className="font-bold text-[#ea580c]">{formatPrice(price, currency)}</span>
-                  {original > price ? (
-                    <span className="text-xs text-store-muted line-through">
-                      {formatPrice(original, currency)}
+              <span className="flex gap-3">
+                {v.imageUrl ? (
+                  <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-store-hover">
+                    <img src={v.imageUrl} alt="" className="h-full w-full object-cover" />
+                  </span>
+                ) : null}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-store-heading">
+                    {v.tierLabel || v.name}
+                  </span>
+                  {!hidePrice ? (
+                    <span className="mt-1 flex flex-wrap items-baseline gap-2 text-sm">
+                      <span className="font-bold text-[#ea580c]">{formatPrice(price, currency)}</span>
+                      {original > price ? (
+                        <span className="text-xs text-store-muted line-through">
+                          {formatPrice(original, currency)}
+                        </span>
+                      ) : null}
+                      {delta > 0 ? (
+                        <span className="text-[11px] font-medium text-store-muted">
+                          +{formatPrice(delta, currency)}
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
-                  {delta > 0 ? (
-                    <span className="text-[11px] font-medium text-store-muted">
-                      +{formatPrice(delta, currency)}
-                    </span>
-                  ) : null}
+                  <span className="mt-1 block text-[11px] text-store-muted">
+                    {outOfStock ? 'Out of stock' : `${v.stock} in stock`}
+                  </span>
                 </span>
-              ) : null}
-              <span className="mt-1 block text-[11px] text-store-muted">
-                {outOfStock ? 'Out of stock' : `${v.stock} in stock`}
               </span>
             </button>
           )

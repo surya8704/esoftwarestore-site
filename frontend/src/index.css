@@ -862,12 +862,78 @@ body {
 .prose-store ul,
 .prose-store ol {
   padding-left: 1.5rem;
+  list-style-position: inside;
 }
 
 .prose-store ul { list-style: disc; }
 .prose-store ol { list-style: decimal; }
 
 .prose-store li { margin-bottom: 0.35rem; }
+
+/* Product description bullets — markers inside the box so overflow-x:clip can't hide them */
+.product-desc-list {
+  list-style: none;
+  margin: 0.85rem 0 1.15rem;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.product-desc-list > li {
+  position: relative;
+  margin: 0;
+  padding: 0.65rem 0.85rem 0.65rem 2rem;
+  border-radius: 0.65rem;
+  background: var(--store-subtle);
+  border: 1px solid var(--store-border);
+  border-left: 3px solid var(--store-primary);
+  color: var(--store-heading);
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.product-desc-list--bullets > li::before {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  top: 1rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--store-primary);
+}
+
+.product-desc-list--ordered {
+  counter-reset: product-desc;
+}
+
+.product-desc-list--ordered > li {
+  counter-increment: product-desc;
+  padding-left: 2.35rem;
+}
+
+.product-desc-list--ordered > li::before {
+  content: counter(product-desc);
+  position: absolute;
+  left: 0.55rem;
+  top: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  background: var(--store-primary-light);
+  color: var(--store-primary-dark);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dark .product-desc-list > li {
+  background: rgba(255, 255, 255, 0.04);
+}
 
 .prose-store a {
   color: #f97316;

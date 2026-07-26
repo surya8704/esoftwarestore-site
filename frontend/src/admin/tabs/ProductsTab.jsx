@@ -292,6 +292,7 @@ export default function ProductsTab({
           originalPrice: Math.round(Number(v.originalPrice) * 100) / 100,
           stock: Math.max(0, Math.floor(Number(v.stock) || 0)),
           description: String(v.description || ''),
+          imageUrl: String(v.imageUrl || '').trim(),
           tierLabel: String(v.tierLabel || v.name || '').trim(),
           isDefault: Boolean(v.isDefault),
           active: true,
@@ -343,6 +344,7 @@ export default function ProductsTab({
         allowedCountries: form.allowedCountries ?? [],
         blockedCountries: form.blockedCountries ?? [],
         variants: variantsPayload,
+        showOnHomepage: form.showOnHomepage !== false,
       }
 
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
@@ -435,10 +437,12 @@ export default function ProductsTab({
             originalPrice: v.originalPrice,
             stock: v.stock ?? 0,
             description: v.description ?? '',
+            imageUrl: v.imageUrl ?? '',
             tierLabel: v.tierLabel ?? '',
             isDefault: Boolean(v.isDefault),
           }))
         : [],
+      showOnHomepage: product.showOnHomepage !== false,
     })
     setBundlePickId('')
     setStatus('')
@@ -637,8 +641,23 @@ export default function ProductsTab({
           </select>
         </label>
 
+        <label className="sm:col-span-2 flex items-start gap-3 rounded-2xl border border-slate-200 px-4 py-3 dark:border-white/10">
+          <input
+            type="checkbox"
+            checked={form.showOnHomepage !== false}
+            onChange={(e) => setForm({ ...form, showOnHomepage: e.target.checked })}
+            className="mt-1 h-4 w-4 rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Show on front page</span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              When checked, this product appears in the homepage product grid. Uncheck to keep it in the catalog but hide it from the front page.
+            </span>
+          </span>
+        </label>
+
         {[
-          ['name', 'Name'], ['slug', 'Slug'], ['category', 'Category'],
+          ['name', 'Name'], ['slug', 'URL slug'], ['category', 'Category'],
           ...(canEditPrices
             ? [
                 ['price', 'Sale price (USD)'],
@@ -670,8 +689,13 @@ export default function ProductsTab({
                 })
               }}
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
-              placeholder={key === 'slug' ? 'auto-from-name' : undefined}
+              placeholder={key === 'slug' ? 'windows-11-pro' : undefined}
             />
+            {key === 'slug' ? (
+              <span className="mt-1 block text-[11px] text-slate-400">
+                Live URL: esoftwarestore.com/product/{slugify(form.slug) || '…'}
+              </span>
+            ) : null}
           </label>
         ))}
 
@@ -853,6 +877,7 @@ export default function ProductsTab({
             productOriginalPrice={form.originalPrice}
             productStock={form.stock}
             disabled={loading}
+            canUploadImages={canUploadImages}
             onChange={(variants) => {
               const def = variants.find((v) => v.isDefault) ?? variants[0]
               setForm((prev) => ({
@@ -892,7 +917,12 @@ export default function ProductsTab({
           seoDescription={form.seoDescription}
           focusKeywords={form.focusKeywords ?? []}
           variantDescriptions={(form.variants ?? []).map((v) => v.description).filter(Boolean)}
-          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          onChange={(patch) => {
+            if (Object.prototype.hasOwnProperty.call(patch, 'slug')) {
+              slugManuallyEditedRef.current = true
+            }
+            setForm((prev) => ({ ...prev, ...patch }))
+          }}
         />
 
         <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
@@ -1084,6 +1114,15 @@ export default function ProductsTab({
                           <Package size={10} /> Bundle
                         </span>
                       ) : null}
+                      {p.showOnHomepage !== false ? (
+                        <span className="ml-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                          Front page
+                        </span>
+                      ) : (
+                        <span className="ml-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-white/10 dark:text-slate-400">
+                          Hidden on home
+                        </span>
+                      )}
                       <span
                         className={`ml-2 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-extrabold ${seoScoreBadgeClass(seo.score)}`}
                         title="SEO score"

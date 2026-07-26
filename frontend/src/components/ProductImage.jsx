@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { resolveStoreProductImage } from '../lib/productImages'
 
 export default function ProductImage({
@@ -18,6 +18,11 @@ export default function ProductImage({
     product ?? { imageUrl: src, name: name || alt, category: category || fallbackLabel, slug },
   )
   const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [resolved])
+
   const showImage = Boolean(resolved) && !failed
 
   if (!showImage) {

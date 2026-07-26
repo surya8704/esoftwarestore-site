@@ -50,12 +50,13 @@ export default function HomePage() {
   }, [country, currency, locale])
 
   const categories = useMemo(() => {
-    const cats = [...new Set(products.map((p) => p.category))].filter(Boolean).sort()
+    const homeProducts = products.filter((p) => p.showOnHomepage !== false)
+    const cats = [...new Set(homeProducts.map((p) => p.category))].filter(Boolean).sort()
     return [ALL_CATEGORIES, ...cats]
   }, [products])
 
   const filtered = useMemo(() => {
-    let list = [...products]
+    let list = products.filter((p) => p.showOnHomepage !== false)
     if (category !== ALL_CATEGORIES) {
       list = list.filter((p) => p.category?.toLowerCase() === category.toLowerCase())
     }
@@ -206,7 +207,7 @@ export default function HomePage() {
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-store-heading md:text-2xl">{t('featuredProducts')}</h2>
-              <p className="mt-1 text-sm text-store-muted">{t('licensesAvailable', { count: products.length })}</p>
+              <p className="mt-1 text-sm text-store-muted">{t('licensesAvailable', { count: products.filter((p) => p.showOnHomepage !== false).length })}</p>
             </div>
           </div>
         )}

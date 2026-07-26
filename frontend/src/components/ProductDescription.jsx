@@ -1,13 +1,20 @@
-const BULLET_RE = /^\s*(?:[-*•▪▸►]|[\u2022\u2023\u25E6])\s+(.*)$/
-const ORDERED_RE = /^\s*(\d+)[.)]\s+(.*)$/
+const BULLET_MARK = '[-*•▪▸►\u2022\u2023\u25E6\u2013\u2014]'
+const LINE_BULLET_RE = new RegExp(`^\\s*${BULLET_MARK}\\s*(\\S.*)$`)
+const ORDERED_RE = /^\s*(\d+)[.)]\s+(\S.*)$/
+const HR_RE = /^\s*-{3,}\s*$/
+/** Split glued bullets: "... purchase -Product will ..." or "... purchase - Product will ..." */
+const INLINE_BULLET_SPLIT_RE = /\s+(?=-\s*\S)/
 
 /**
- * Split plain-text product descriptions into paragraphs and lists so
- * admin-entered bullet lines render as real <ul>/<ol> items.
+ * Split plain-text product descriptions into paragraphs and lists.
+ * Every line that starts with "-" (with or without a space) is a bullet.
+ * Multiple bullets stuck on one line are split apart.
  */
 export function parseDescriptionBlocks(text) {
   const lines = String(text ?? '')
     .replace(/\r\n/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
     .split('\n')
 
   const blocks = []
@@ -25,6 +32,41 @@ export function parseDescriptionBlocks(text) {
     list = null
   }
 
+  const pushBullet = (item) => {
+    const trimmed = String(item || '').trim()
+    if (!trimmed) return
+    flushParagraph()
+    if (!list || list.type !== 'ul') {
+      flushList()
+      list = { type: 'ul', items: [] }
+    }
+    list.items.push(trimmed)
+  }
+
+  const pushOrdered = (item) => {
+    const trimmed = String(item || '').trim()
+    if (!trimmed) return
+    flushParagraph()
+    if (!list || list.type !== 'ol') {
+      flushList()
+      list = { type: 'ol', items: [] }
+    }
+    list.items.push(trimmed)
+  }
+
+  /** Expand one physical line into one or more bullet item strings. */
+  const expandBulletItems = (line) => {
+    if (HR_RE.test(line)) return null
+    const matched = line.match(LINE_BULLET_RE)
+    if (!matched) return null
+
+    const body = matched[1]
+    const parts = body.split(INLINE_BULLET_SPLIT_RE).map((part) =>
+      part.replace(new RegExp(`^${BULLET_MARK}\\s*`), '').trim(),
+    )
+    return parts.filter(Boolean)
+  }
+
   for (const raw of lines) {
     const line = String(raw ?? '')
     if (!line.trim()) {
@@ -35,23 +77,13 @@ export function parseDescriptionBlocks(text) {
 
     const ordered = line.match(ORDERED_RE)
     if (ordered) {
-      flushParagraph()
-      if (!list || list.type !== 'ol') {
-        flushList()
-        list = { type: 'ol', items: [] }
-      }
-      list.items.push(ordered[2].trim())
+      pushOrdered(ordered[2])
       continue
     }
 
-    const bullet = line.match(BULLET_RE)
-    if (bullet) {
-      flushParagraph()
-      if (!list || list.type !== 'ul') {
-        flushList()
-        list = { type: 'ul', items: [] }
-      }
-      list.items.push(bullet[1].trim())
+    const bulletItems = expandBulletItems(line)
+    if (bulletItems) {
+      for (const item of bulletItems) pushBullet(item)
       continue
     }
 
@@ -79,7 +111,7 @@ export default function ProductDescription({ text, className = '', clamp = false
   }
 
   return (
-    <div className={className}>
+    <div className={`product-description ${className}`.trim()}>
       {blocks.map((block, index) => {
         if (block.type === 'p') {
           return (
@@ -90,7 +122,7 @@ export default function ProductDescription({ text, className = '', clamp = false
         }
         if (block.type === 'ol') {
           return (
-            <ol key={`ol-${index}`} className="list-decimal space-y-2 pl-5">
+            <ol key={`ol-${index}`} className="product-desc-list product-desc-list--ordered">
               {block.items.map((item, i) => (
                 <li key={`ol-${index}-${i}`}>{item}</li>
               ))}
@@ -98,7 +130,7 @@ export default function ProductDescription({ text, className = '', clamp = false
           )
         }
         return (
-          <ul key={`ul-${index}`} className="list-disc space-y-2 pl-5">
+          <ul key={`ul-${index}`} className="product-desc-list product-desc-list--bullets">
             {block.items.map((item, i) => (
               <li key={`ul-${index}-${i}`}>{item}</li>
             ))}

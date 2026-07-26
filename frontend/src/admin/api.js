@@ -37,7 +37,7 @@ export async function dashboardApi(path, options = {}) {
   })
 
   const text = await response.text()
-  let data = {}
+  let data
   try {
     data = text ? JSON.parse(text) : {}
   } catch {
@@ -151,6 +151,7 @@ export const emptyProductForm = {
   allowedCountries: [],
   blockedCountries: [],
   variants: [],
+  showOnHomepage: true,
 }
 
 export function emptyVariantRow(overrides = {}) {
@@ -162,6 +163,7 @@ export function emptyVariantRow(overrides = {}) {
     originalPrice: 79,
     stock: 10,
     description: '',
+    imageUrl: '',
     tierLabel: '',
     isDefault: false,
     ...overrides,

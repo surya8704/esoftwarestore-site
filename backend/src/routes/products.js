@@ -29,6 +29,7 @@ const normalizeProduct = (product) => {
     stock: Number(p.stock),
     hidePrice: Boolean(p.hidePrice),
     hideCart: Boolean(p.hideCart),
+    showOnHomepage: p.showOnHomepage !== false,
     shippingBullets: Array.isArray(p.shippingBullets)
       ? p.shippingBullets.map((item) => String(item || '').trim()).filter(Boolean)
       : [],

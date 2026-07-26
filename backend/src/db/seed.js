@@ -31,6 +31,7 @@ export async function seedDatabase() {
         imageUrl: item.imageUrl,
         visualAccent: item.visualAccent ?? 'from-sky-500 to-cyan-400',
         description: item.description,
+        shippingBullets: Array.isArray(item.shippingBullets) ? item.shippingBullets : [],
         downloadUrl: item.downloadUrl,
       })
 
