@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
   price INT NOT NULL,
   original_price INT NOT NULL,
   stock INT NOT NULL DEFAULT 0,
+  description TEXT,
   tier_min_qty INT NOT NULL DEFAULT 1,
   tier_label VARCHAR(80),
   is_default TINYINT NOT NULL DEFAULT 0,

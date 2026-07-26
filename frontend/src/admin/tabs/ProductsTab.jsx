@@ -7,6 +7,9 @@ import RegionalPricesEditor, {
   mapToRegionalPricesPayload,
   regionalPricesToMap,
 } from '../components/RegionalPricesEditor'
+import ProductVariantsEditor from '../components/ProductVariantsEditor'
+import ProductSeoPanel from '../components/ProductSeoPanel'
+import { analyzeProductSeo, seoScoreBadgeClass } from '../../lib/productSeo'
 
 function buildBundleName(bundleItems, products) {
   return (bundleItems ?? [])
@@ -280,6 +283,32 @@ export default function ProductsTab({
         throw new Error('Enter a valid USD original price greater than 0')
       }
 
+      const variantsPayload = (form.variants ?? [])
+        .map((v) => ({
+          id: v.id || undefined,
+          name: String(v.name || '').trim(),
+          sku: String(v.sku || '').trim(),
+          price: Math.round(Number(v.price) * 100) / 100,
+          originalPrice: Math.round(Number(v.originalPrice) * 100) / 100,
+          stock: Math.max(0, Math.floor(Number(v.stock) || 0)),
+          description: String(v.description || ''),
+          tierLabel: String(v.tierLabel || v.name || '').trim(),
+          isDefault: Boolean(v.isDefault),
+          active: true,
+        }))
+        .filter((v) => v.name)
+
+      if ((form.variants ?? []).length > 0 && variantsPayload.length === 0) {
+        throw new Error('Each edition needs a name')
+      }
+      for (const v of variantsPayload) {
+        if (!Number.isFinite(v.price) || v.price <= 0) throw new Error(`Enter a valid price for edition “${v.name}”`)
+        if (!Number.isFinite(v.originalPrice) || v.originalPrice <= 0) {
+          throw new Error(`Enter a valid compare-at price for edition “${v.name}”`)
+        }
+      }
+
+      const defaultVariant = variantsPayload.find((v) => v.isDefault) ?? variantsPayload[0]
       const body = {
         name,
         slug,
@@ -292,14 +321,20 @@ export default function ProductsTab({
                 quantity: Number(item.quantity) || 1,
               }))
             : [],
-        price,
-        originalPrice,
+        price: defaultVariant?.price ?? price,
+        originalPrice: defaultVariant?.originalPrice ?? originalPrice,
         rating: Number(form.rating) || 4.8,
-        stock: Math.max(0, Math.floor(Number(form.stock) || 0)),
+        stock: defaultVariant?.stock ?? Math.max(0, Math.floor(Number(form.stock) || 0)),
         licenseType: String(form.licenseType || '').trim() || 'Lifetime',
         imageUrl: usesCustomImage ? form.imageUrl : '',
         visualAccent: form.visualAccent || 'from-sky-500 to-cyan-400',
         description: form.description || '',
+        seoTitle: String(form.seoTitle || '').trim(),
+        seoDescription: String(form.seoDescription || '').trim(),
+        focusKeywords: (form.focusKeywords ?? [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+          .slice(0, 10),
         shippingTitle: String(form.shippingTitle || '').trim(),
         shippingBullets: (form.shippingBullets ?? [])
           .map((item) => String(item || '').trim())
@@ -307,6 +342,7 @@ export default function ProductsTab({
         vendorId: form.vendorId || undefined,
         allowedCountries: form.allowedCountries ?? [],
         blockedCountries: form.blockedCountries ?? [],
+        variants: variantsPayload,
       }
 
       const base = isAdmin ? '/api/admin/products' : '/api/vendor/products'
@@ -377,6 +413,9 @@ export default function ProductsTab({
       imageUrl: product.imageUrl ?? '',
       visualAccent: product.visualAccent ?? 'from-sky-500 to-cyan-400',
       description: product.description ?? '',
+      seoTitle: product.seoTitle ?? '',
+      seoDescription: product.seoDescription ?? '',
+      focusKeywords: Array.isArray(product.focusKeywords) ? product.focusKeywords : [],
       shippingTitle: product.shippingTitle ?? '',
       shippingBullets:
         Array.isArray(product.shippingBullets) && product.shippingBullets.length
@@ -387,6 +426,19 @@ export default function ProductsTab({
       vendorId: product.vendorId ?? '',
       allowedCountries: product.allowedCountries ?? [],
       blockedCountries: product.blockedCountries ?? [],
+      variants: Array.isArray(product.variants)
+        ? product.variants.map((v) => ({
+            id: v.id,
+            name: v.name ?? '',
+            sku: v.sku ?? '',
+            price: v.price,
+            originalPrice: v.originalPrice,
+            stock: v.stock ?? 0,
+            description: v.description ?? '',
+            tierLabel: v.tierLabel ?? '',
+            isDefault: Boolean(v.isDefault),
+          }))
+        : [],
     })
     setBundlePickId('')
     setStatus('')
@@ -794,6 +846,30 @@ export default function ProductsTab({
             </select>
           </label>
         ) : null}
+        {(form.productType ?? 'standard') !== 'bundle' ? (
+          <ProductVariantsEditor
+            variants={form.variants ?? []}
+            productPrice={form.price}
+            productOriginalPrice={form.originalPrice}
+            productStock={form.stock}
+            disabled={loading}
+            onChange={(variants) => {
+              const def = variants.find((v) => v.isDefault) ?? variants[0]
+              setForm((prev) => ({
+                ...prev,
+                variants,
+                ...(def
+                  ? {
+                      price: def.price || prev.price,
+                      originalPrice: def.originalPrice || prev.originalPrice,
+                      stock: def.stock ?? prev.stock,
+                    }
+                  : null),
+              }))
+            }}
+          />
+        ) : null}
+
         <label className="sm:col-span-2">
           <span className="mb-1 block text-xs font-medium">Description</span>
           <textarea
@@ -806,6 +882,18 @@ export default function ProductsTab({
             No character limit. Start lines with - or 1. to show bullet/numbered lists on the product page.
           </span>
         </label>
+
+        <ProductSeoPanel
+          name={form.name}
+          slug={form.slug}
+          description={form.description}
+          imageUrl={usesCustomImage ? form.imageUrl : ''}
+          seoTitle={form.seoTitle}
+          seoDescription={form.seoDescription}
+          focusKeywords={form.focusKeywords ?? []}
+          variantDescriptions={(form.variants ?? []).map((v) => v.description).filter(Boolean)}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+        />
 
         <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Shipping &amp; delivery</p>
@@ -958,6 +1046,16 @@ export default function ProductsTab({
           {filteredProducts.map((p) => {
             const bundle = (p.productType ?? 'standard') === 'bundle'
             const highlighted = highlightedId === p.id
+            const seo = analyzeProductSeo({
+              name: p.name,
+              slug: p.slug,
+              description: p.description,
+              imageUrl: p.imageUrl,
+              seoTitle: p.seoTitle,
+              seoDescription: p.seoDescription,
+              focusKeywords: p.focusKeywords,
+              variantDescriptions: (p.variants ?? []).map((v) => v.description).filter(Boolean),
+            })
             return (
               <div
                 key={p.id}
@@ -986,13 +1084,27 @@ export default function ProductsTab({
                           <Package size={10} /> Bundle
                         </span>
                       ) : null}
+                      <span
+                        className={`ml-2 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-extrabold ${seoScoreBadgeClass(seo.score)}`}
+                        title="SEO score"
+                      >
+                        SEO {seo.score}
+                      </span>
                     </p>
                     <p className="text-sm text-slate-500">
                       {p.category} • {formatMoney(p.price)} • Stock {p.stock}
+                      {(p.variants?.length ?? 0) > 1 ? ` • ${p.variants.length} editions` : ''}
                       {p.vendorName ? ` • ${p.vendorName}` : ''}
                       {bundle ? ` • ${(p.bundleItems?.length ?? 0)} products` : ''}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-400">{geoLabel(p)}</p>
+                    {seo.sections.some((s) => s.status.tone === 'error') ? (
+                      <p className="mt-1 text-xs font-medium text-rose-600">
+                        SEO needs work · {seo.sections.filter((s) => s.status.tone === 'error').map((s) => s.label).join(', ')}
+                      </p>
+                    ) : seo.score >= 80 ? (
+                      <p className="mt-1 text-xs font-medium text-emerald-600">SEO looking strong</p>
+                    ) : null}
                     {isAdmin && !bundle && p.licensePool ? (
                       <p className={`mt-1 text-xs font-semibold ${p.licensePool.available > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
                         Keys: {p.licensePool.available} available · {p.licensePool.assigned} used

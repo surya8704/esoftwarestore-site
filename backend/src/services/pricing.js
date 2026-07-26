@@ -70,11 +70,15 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     }
   }
 
-  const tier = [...productVariants]
-    .sort((a, b) => a.tierMinQty - b.tierMinQty)
-    .reverse()
-    .find((item) => quantity >= item.tierMinQty)
-  if (tier) basePrice = tier.price
+  // Edition variants (Windows 11 / Pro / Enterprise): honor the selected variant price.
+  // Only fall back to qty-based tier variants when no specific edition was chosen.
+  if (!variantId) {
+    const tier = [...productVariants]
+      .sort((a, b) => a.tierMinQty - b.tierMinQty)
+      .reverse()
+      .find((item) => quantity >= item.tierMinQty)
+    if (tier) basePrice = tier.price
+  }
 
   const converted = convertPrice(basePrice, targetCurrency, CURRENCIES, catalogBase)
   const volume = applyVolumeDiscount(converted, quantity)
@@ -87,7 +91,7 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     paymentMethods: parseJsonList(matched?.paymentMethods),
     shippingMode: matched?.shippingMode ?? 'instant_digital',
     variant,
-    priceSource: tier ? 'tier' : 'base',
+    priceSource: variantId ? 'variant' : 'base',
   }
 }
 

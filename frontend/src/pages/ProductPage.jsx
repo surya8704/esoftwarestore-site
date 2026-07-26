@@ -13,6 +13,7 @@ import ProductImage from '../components/ProductImage'
 import ProductDescription from '../components/ProductDescription'
 import ProductReviews, { ProductRatingBadge } from '../components/ProductReviews'
 import TrustBadge from '../components/TrustBadge'
+import VariantPicker from '../components/VariantPicker'
 
 const TABS = [
   { id: 'description', label: 'Description' },
@@ -92,8 +93,20 @@ export default function ProductPage() {
   }, [slug, country, currency, locale])
 
   const product = data?.product
-  const selected = product?.variants?.find((v) => v.id === variantId)
-  const basePrice = selected?.price ?? product?.displayPrice ?? product?.price ?? 0
+  const selected = product?.variants?.find((v) => v.id === variantId) ?? product?.variants?.[0]
+  const hasMultipleVariants = (product?.variants?.length ?? 0) > 1
+  const displayName =
+    (selected?.name && String(selected.name).trim()) ||
+    product?.name ||
+    ''
+  const displayDescription =
+    (selected?.description && String(selected.description).trim()) ||
+    product?.description ||
+    ''
+  const basePrice = selected?.displayPrice ?? selected?.price ?? product?.displayPrice ?? product?.price ?? 0
+  const compareAt =
+    selected?.displayOriginalPrice ?? selected?.originalPrice ?? product?.originalPrice ?? 0
+  const displayStock = selected?.stock ?? product?.stock
   const volumeTiers = config?.volumeDiscountTiers?.length ? config.volumeDiscountTiers : VOLUME_DISCOUNT_TIERS
   const volumePricing = useMemo(
     () => priceWithVolumeDiscount(basePrice, quantity, volumeTiers),
@@ -110,7 +123,7 @@ export default function ProductPage() {
   }
 
   const price = volumePricing.unitPrice
-  const discount = discountPercent(price, product.originalPrice)
+  const discount = discountPercent(price, compareAt > price ? compareAt : product.originalPrice)
   const currentIndex = allProducts.findIndex((p) => p.slug === slug)
   const prevProduct = currentIndex > 0 ? allProducts[currentIndex - 1] : null
   const nextProduct = currentIndex < allProducts.length - 1 ? allProducts[currentIndex + 1] : null
@@ -136,7 +149,16 @@ export default function ProductPage() {
 
   return (
     <>
-      <SEO title={product.name} description={product.description} path={`/product/${slug}`} product={product} />
+      <SEO
+        title={(product.seoTitle || '').trim() || displayName}
+        description={(product.seoDescription || '').trim() || displayDescription}
+        path={`/product/${slug}`}
+        product={{
+          ...product,
+          name: displayName,
+          description: (product.seoDescription || '').trim() || displayDescription,
+        }}
+      />
 
       <div className="store-container py-4 pb-36 sm:py-6 lg:pb-6">
         <div className="mb-4 flex flex-col gap-2 border-b border-store pb-3 text-sm text-store-muted sm:mb-6 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:pb-4">
@@ -165,7 +187,7 @@ export default function ProductPage() {
               {discount > 0 ? <span className="sale-badge">-{discount}%</span> : null}
               <ProductImage
                 product={product}
-                alt={product.name}
+                alt={displayName}
                 visualAccent={product.visualAccent ?? 'from-slate-400 to-slate-600'}
                 fallbackLabel={product.category}
                 className={`w-full object-cover transition-transform ${zoomed ? 'scale-125' : 'aspect-square'}`}
@@ -182,7 +204,12 @@ export default function ProductPage() {
             <p className="text-xs font-bold uppercase tracking-wider text-store-muted">
               {isBundle ? 'Bundle deal' : product.category}
             </p>
-            <h1 className="mt-2 break-words text-xl font-extrabold leading-tight text-store-heading sm:text-2xl md:text-3xl">{product.name}</h1>
+            <h1 className="mt-2 break-words text-xl font-extrabold leading-tight text-store-heading sm:text-2xl md:text-3xl">{displayName}</h1>
+            {hasMultipleVariants && selected?.name && selected.name !== product.name ? (
+              <p className="mt-1 text-sm text-store-muted">
+                Part of <span className="font-medium text-store-heading">{product.name}</span>
+              </p>
+            ) : null}
 
             {isBundle && bundleContents.length ? (
               <div className="mt-4 rounded-2xl border border-store bg-store-hover/60 p-4">
@@ -234,8 +261,8 @@ export default function ProductPage() {
                   <p className="text-lg text-store-muted line-through">
                     {formatPrice(volumePricing.listUnitPrice, product.currency ?? currency)}
                   </p>
-                ) : product.originalPrice && product.originalPrice > price ? (
-                  <p className="text-lg text-store-muted line-through">{formatPrice(product.originalPrice, product.currency ?? currency)}</p>
+                ) : compareAt && compareAt > price ? (
+                  <p className="text-lg text-store-muted line-through">{formatPrice(compareAt, product.currency ?? currency)}</p>
                 ) : null}
                 {volumePricing.volumeDiscountPercent > 0 ? (
                   <span className="rounded-full bg-[#ecfdf5] px-2.5 py-0.5 text-xs font-bold text-[#059669]">
@@ -248,34 +275,25 @@ export default function ProductPage() {
             ) : null}
 
             <ProductDescription
-              text={product.description}
+              text={displayDescription}
               clamp
               className="mt-4 text-sm leading-relaxed text-store-body"
             />
 
             <div className="mt-5 flex flex-wrap gap-2">
               <span className="rounded-full bg-store-primary-muted px-3 py-1 text-xs font-semibold text-[#ea580c]">{soldRecently} sold recently</span>
-              <span className="rounded-full bg-[#ecfdf5] px-3 py-1 text-xs font-semibold text-[#059669] dark:bg-[#064e3b] dark:text-[#4ade80]">{product.stock} in stock</span>
+              <span className="rounded-full bg-[#ecfdf5] px-3 py-1 text-xs font-semibold text-[#059669] dark:bg-[#064e3b] dark:text-[#4ade80]">{displayStock} in stock</span>
               <span className="rounded-full bg-[#fef2f2] px-3 py-1 text-xs font-semibold text-[#e11d48] dark:bg-[#450a0a] dark:text-[#fca5a5]">{watchers} watching now</span>
             </div>
 
-            {product.variants?.length > 1 ? (
-              <div className="mt-6">
-                <p className="mb-2 text-sm font-semibold">Select option</p>
-                <div className="flex flex-wrap gap-2">
-                  {product.variants.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setVariantId(v.id)}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${variantId === v.id ? 'border-[#f97316] bg-store-primary-muted text-[#f97316]' : 'border-store hover:border-[#f97316]/50'}`}
-                    >
-                      {v.tierLabel ?? v.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <VariantPicker
+              variants={product.variants}
+              selectedId={variantId}
+              onSelect={setVariantId}
+              currency={product.currency ?? currency}
+              hidePrice={product.hidePrice}
+              label={product.category?.toLowerCase().includes('windows') ? 'Edition' : 'Option'}
+            />
 
             <div className="mt-6">
               <p className="mb-2 text-sm font-semibold text-store-heading">Quantity</p>
@@ -383,7 +401,7 @@ export default function ProductPage() {
             {tab === 'description' ? (
               <div>
                 <h2 className="text-lg font-bold text-store-heading">Introduction</h2>
-                <ProductDescription text={product.description} className="mt-3 space-y-3" />
+                <ProductDescription text={displayDescription} className="mt-3 space-y-3" />
               </div>
             ) : null}
             {tab === 'shipping' ? (
@@ -400,6 +418,7 @@ export default function ProductPage() {
             ) : null}
             {tab === 'detail' ? (
               <ul className="list-disc space-y-2 pl-5">
+                {selected ? <li>Edition: {selected.tierLabel || selected.name}</li> : null}
                 <li>License type: {product.licenseType}</li>
                 <li>Category: {product.category}</li>
                 <li>{resolveShippingBullets(product)[0]}</li>
@@ -458,7 +477,7 @@ export default function ProductPage() {
                   {formatPrice(price, product.currency ?? currency)}
                 </p>
               ) : null}
-              <p className="truncate text-xs text-store-muted">{product.name}</p>
+              <p className="truncate text-xs text-store-muted">{displayName}</p>
             </div>
             {!product.hideCart ? (
               <button

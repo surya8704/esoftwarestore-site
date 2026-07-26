@@ -142,11 +142,30 @@ export const emptyProductForm = {
   imageUrl: '',
   visualAccent: 'from-sky-500 to-cyan-400',
   description: '',
+  seoTitle: '',
+  seoDescription: '',
+  focusKeywords: [],
   shippingTitle: '',
   shippingBullets: [''],
   vendorId: '',
   allowedCountries: [],
   blockedCountries: [],
+  variants: [],
+}
+
+export function emptyVariantRow(overrides = {}) {
+  return {
+    id: undefined,
+    name: '',
+    sku: '',
+    price: 29,
+    originalPrice: 79,
+    stock: 10,
+    description: '',
+    tierLabel: '',
+    isDefault: false,
+    ...overrides,
+  }
 }
 
 export const emptyVendorForm = {

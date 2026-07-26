@@ -25,7 +25,7 @@ import { canProcessOrderRefund, getRefundableAmount, processOrderRefund, roundMo
 import { generateConfirmationCode, parseJsonList } from '../lib/utils.js'
 import { buildContactSummary } from '../lib/phone.js'
 import { hashPassword } from '../db/seed.js'
-import { normalizeProduct, productWriteFields, prepareProductPayload, vendorStats } from './vendor.js'
+import { normalizeProduct, productWriteFields, prepareProductPayload, vendorStats, persistProductVariants, attachVariantsToProducts, attachVariantsToProduct } from './vendor.js'
 import {
   defaultVendorPermissions,
   normalizeVendorPermissions,
@@ -517,14 +517,15 @@ export async function adminRoutes(app) {
     const result = await Product.find().sort({ createdAt: -1 }).populate('vendorId', 'name')
     const ids = result.map((row) => row._id)
     const poolStats = await getLicensePoolStatsForProducts(ids)
-    return {
-      products: result.map((row) => ({
+    const products = await attachVariantsToProducts(
+      result.map((row) => ({
         ...normalizeProduct(row),
         vendorId: row.vendorId?._id?.toString?.() ?? row.vendorId,
         vendorName: row.vendorId?.name,
         licensePool: poolStats[String(row._id)] ?? { available: 0, assigned: 0, total: 0 },
       })),
-    }
+    )
+    return { products }
   })
 
   app.get('/api/admin/license-keys/overview', { preHandler: [app.requireAdmin] }, async () => {
@@ -628,8 +629,11 @@ export async function adminRoutes(app) {
       vendorId: payload.vendorId || null,
       ...productWriteFields(payload),
     })
-
-    return { product: normalizeProduct(product) }
+    const variants = await persistProductVariants(product, payload.variants, {
+      forceSync: Array.isArray(request.body?.variants),
+    })
+    const refreshed = await Product.findById(product._id)
+    return { product: { ...normalizeProduct(refreshed), variants } }
   })
 
   app.put('/api/admin/products/:id', { preHandler: [app.requireAdmin] }, async (request, reply) => {
@@ -648,7 +652,26 @@ export async function adminRoutes(app) {
       { new: true },
     )
     if (!product) return reply.notFound('Product not found')
-    return { product: normalizeProduct(product) }
+    const variants = await persistProductVariants(product, payload.variants, {
+      forceSync: Array.isArray(request.body?.variants),
+    })
+    const refreshed = await Product.findById(product._id)
+    return { product: { ...normalizeProduct(refreshed), variants } }
+  })
+
+  app.get('/api/admin/products/:id/variants', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const product = await Product.findById(request.params.id)
+    if (!product) return reply.notFound('Product not found')
+    const withVariants = await attachVariantsToProduct(normalizeProduct(product))
+    return { productId: product._id.toString(), variants: withVariants.variants }
+  })
+
+  app.put('/api/admin/products/:id/variants', { preHandler: [app.requireAdmin] }, async (request, reply) => {
+    const product = await Product.findById(request.params.id)
+    if (!product) return reply.notFound('Product not found')
+    const variants = await persistProductVariants(product, request.body?.variants ?? [], { forceSync: true })
+    const refreshed = await Product.findById(product._id)
+    return { product: { ...normalizeProduct(refreshed), variants } }
   })
 
   app.patch('/api/admin/products/:id/regions', { preHandler: [app.requireAdmin] }, async (request, reply) => {

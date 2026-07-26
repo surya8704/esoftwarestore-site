@@ -38,6 +38,8 @@ export async function cartRoutes(app) {
                 imageUrl: resolveStoreProductImage(product, config.apiPublicUrl),
               }
             : null,
+          variantId: item.variantId?.toString?.() ?? item.variantId ?? null,
+          variantName: pricing.variant?.name ?? pricing.variant?.tierLabel ?? null,
           unitPrice: pricing.unitPrice,
           listUnitPrice: pricing.listUnitPrice ?? pricing.unitPrice,
           volumeDiscountPercent: pricing.volumeDiscountPercent ?? 0,
@@ -62,13 +64,21 @@ export async function cartRoutes(app) {
     const sessionId = request.headers['x-session-id'] ?? generateSessionId()
     const cart = await getOrCreateCart(sessionId)
 
-    const existing = await CartItem.findOne({ cartId: cart._id, productId: payload.productId })
+    const sameProduct = await CartItem.find({ cartId: cart._id, productId: payload.productId })
+    const existing = sameProduct.find(
+      (item) => String(item.variantId || '') === String(payload.variantId || ''),
+    )
     if (existing) {
       existing.quantity += payload.quantity
       if (payload.variantId) existing.variantId = payload.variantId
       await existing.save()
     } else {
-      await CartItem.create({ cartId: cart._id, productId: payload.productId, variantId: payload.variantId, quantity: payload.quantity })
+      await CartItem.create({
+        cartId: cart._id,
+        productId: payload.productId,
+        variantId: payload.variantId || null,
+        quantity: payload.quantity,
+      })
     }
     return { sessionId, success: true }
   })

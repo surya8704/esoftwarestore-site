@@ -6,6 +6,13 @@ import { resolveProductImageForSave, resolveStoreProductImage } from '../lib/pro
 import { validateAndNormalizeBundleItems, buildBundleProductName } from '../lib/bundles.js'
 import { config } from '../config.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
+import {
+  ensureDefaultVariant,
+  listVariantsByProductIds,
+  listVariantsForProduct,
+  syncProductVariants,
+  variantsArraySchema,
+} from '../lib/productVariants.js'
 
 const countryCodeList = z.array(z.string().trim().toUpperCase().length(2)).optional().default([])
 
@@ -40,6 +47,19 @@ const productSchema = z
       }),
     visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
     description: z.string().max(50000).optional().default(''),
+    seoTitle: z.string().max(200).optional().default(''),
+    seoDescription: z.string().max(500).optional().default(''),
+    focusKeywords: z
+      .array(z.string().trim().max(80))
+      .max(10)
+      .optional()
+      .default([])
+      .transform((items) =>
+        (items ?? [])
+          .map((item) => String(item || '').trim().toLowerCase())
+          .filter(Boolean)
+          .slice(0, 10),
+      ),
     shippingTitle: z.string().max(160).optional().default(''),
     shippingText: z.string().max(4000).optional().default(''),
     deliveryText: z.string().max(2000).optional().default(''),
@@ -57,6 +77,7 @@ const productSchema = z
       .transform((v) => (v && String(v).trim() ? String(v).trim() : undefined)),
     allowedCountries: countryCodeList,
     blockedCountries: countryCodeList,
+    variants: variantsArraySchema,
   })
   .superRefine((data, ctx) => {
     if (data.productType === 'bundle' && (data.bundleItems?.length ?? 0) < 2) {
@@ -94,6 +115,11 @@ const normalizeProduct = (product) => {
     shippingBullets: Array.isArray(p.shippingBullets)
       ? p.shippingBullets.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    seoTitle: String(p.seoTitle ?? ''),
+    seoDescription: String(p.seoDescription ?? ''),
+    focusKeywords: Array.isArray(p.focusKeywords)
+      ? p.focusKeywords.map((item) => String(item || '').trim()).filter(Boolean)
+      : parseJsonList(p.focusKeywords) ?? [],
     imageUrl: resolveStoreProductImage(p, config.apiPublicUrl),
   }
 }
@@ -120,6 +146,9 @@ function productWriteFields(payload) {
     imageUrl: resolveProductImageForSave(payload, config.apiPublicUrl),
     visualAccent: payload.visualAccent,
     description: payload.description,
+    seoTitle: payload.seoTitle ?? '',
+    seoDescription: payload.seoDescription ?? '',
+    focusKeywords: payload.focusKeywords ?? [],
     shippingTitle: payload.shippingTitle ?? '',
     shippingText: payload.shippingText ?? '',
     deliveryText: payload.deliveryText ?? '',
@@ -129,6 +158,35 @@ function productWriteFields(payload) {
     allowedCountries: encodeCountryList(payload.allowedCountries),
     blockedCountries: encodeCountryList(payload.blockedCountries),
   }
+}
+
+/** Persist variants when the client sent a variants array; otherwise ensure a default exists. */
+export async function persistProductVariants(product, variantsInput, { forceSync = false } = {}) {
+  if (forceSync || Array.isArray(variantsInput)) {
+    const result = await syncProductVariants(product, variantsInput ?? [])
+    if (result.productPricePatch) {
+      await Product.findByIdAndUpdate(product._id ?? product.id, result.productPricePatch)
+      Object.assign(product, result.productPricePatch)
+    }
+    return result.variants
+  }
+  return ensureDefaultVariant(product)
+}
+
+export async function attachVariantsToProducts(products = []) {
+  const ids = products.map((p) => p._id ?? p.id).filter(Boolean)
+  const map = await listVariantsByProductIds(ids)
+  return products.map((product) => {
+    const id = String(product._id ?? product.id)
+    const variants = map.get(id) ?? product.variants ?? []
+    return { ...product, variants }
+  })
+}
+
+export async function attachVariantsToProduct(product) {
+  if (!product) return product
+  const variants = await listVariantsForProduct(product._id ?? product.id)
+  return { ...product, variants }
 }
 
 /** Parse body + validate bundle children exist. */
@@ -252,7 +310,8 @@ export async function vendorRoutes(app) {
     if (!vendorId) return
     denyUnless(app, request, 'canManageProducts')
     const result = await Product.find({ vendorId }).sort({ createdAt: -1 })
-    return { products: result.map(normalizeProduct) }
+    const products = await attachVariantsToProducts(result.map(normalizeProduct))
+    return { products }
   })
 
   app.post('/api/vendor/products', { preHandler: [app.requireVendor] }, async (request, reply) => {
@@ -274,8 +333,11 @@ export async function vendorRoutes(app) {
       vendorId,
       ...productWriteFields(payload),
     })
-
-    return { product: normalizeProduct(product) }
+    const variants = await persistProductVariants(product, payload.variants, {
+      forceSync: Array.isArray(request.body?.variants),
+    })
+    const refreshed = await Product.findById(product._id)
+    return { product: { ...normalizeProduct(refreshed), variants } }
   })
 
   app.put('/api/vendor/products/:id', { preHandler: [app.requireVendor] }, async (request, reply) => {
@@ -302,7 +364,11 @@ export async function vendorRoutes(app) {
     }
 
     const product = await Product.findByIdAndUpdate(request.params.id, fields, { new: true })
-    return { product: normalizeProduct(product) }
+    const variants = await persistProductVariants(product, payload.variants, {
+      forceSync: Array.isArray(request.body?.variants),
+    })
+    const refreshed = await Product.findById(product._id)
+    return { product: { ...normalizeProduct(refreshed), variants } }
   })
 
   app.delete('/api/vendor/products/:id', { preHandler: [app.requireVendor] }, async (request, reply) => {

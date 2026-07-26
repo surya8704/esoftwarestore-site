@@ -1,6 +1,6 @@
 import { mapId } from '../db/client.js'
 import { Product, ProductReview, ProductVariant, SupportVideo } from '../db/models.js'
-import { isProductVisible } from '../lib/utils.js'
+import { isProductVisible, parseJsonList } from '../lib/utils.js'
 import { createPricingContext, resolveProductPriceFromContext, publicVolumeTiers } from '../services/pricing.js'
 import { detectRegion, getRegionForCountry, COUNTRY_REGION } from '../services/geo.js'
 import { config, COUNTRY_PAYMENTS, CURRENCIES, LOCALES, isPaymentsLiveMode } from '../config.js'
@@ -32,16 +32,31 @@ const normalizeProduct = (product) => {
     shippingBullets: Array.isArray(p.shippingBullets)
       ? p.shippingBullets.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    seoTitle: String(p.seoTitle ?? ''),
+    seoDescription: String(p.seoDescription ?? ''),
+    focusKeywords: Array.isArray(p.focusKeywords)
+      ? p.focusKeywords.map((item) => String(item || '').trim()).filter(Boolean)
+      : parseJsonList(p.focusKeywords) ?? [],
     imageUrl: resolveStoreProductImage(p, config.apiPublicUrl),
   }
 }
 
 function enrichProduct(product, context, country, currency) {
   const pricing = resolveProductPriceFromContext(product, context, { countryCode: country, currency })
-  const variants = (context.variantsByProductId.get(String(product._id ?? product.id)) ?? []).map((v) => ({
-    ...mapId(v),
-    displayPrice: pricing.unitPrice,
-  }))
+  const rawVariants = context.variantsByProductId.get(String(product._id ?? product.id)) ?? []
+  const variants = rawVariants.map((v) => {
+    const priced = resolveProductPriceFromContext(product, context, {
+      countryCode: country,
+      currency,
+      variantId: v._id,
+      quantity: 1,
+    })
+    return {
+      ...mapId(v),
+      displayPrice: priced.unitPrice,
+      displayOriginalPrice: priced.listUnitPrice,
+    }
+  })
 
   return {
     ...normalizeProduct(product),
@@ -110,7 +125,20 @@ export async function productRoutes(app) {
 
     const context = await createPricingContext([product._id])
     const pricing = resolveProductPriceFromContext(product, context, { countryCode: country, currency })
-    const variants = (context.variantsByProductId.get(String(product._id)) ?? []).map(mapId)
+    const rawVariants = context.variantsByProductId.get(String(product._id)) ?? []
+    const variants = rawVariants.map((v) => {
+      const priced = resolveProductPriceFromContext(product, context, {
+        countryCode: country,
+        currency,
+        variantId: v._id,
+        quantity: 1,
+      })
+      return {
+        ...mapId(v),
+        displayPrice: priced.unitPrice,
+        displayOriginalPrice: priced.listUnitPrice,
+      }
+    })
     const videos = await SupportVideo.find({ active: true }).lean()
     const enriched = await attachBundleContents({
       ...normalizeProduct(product),
