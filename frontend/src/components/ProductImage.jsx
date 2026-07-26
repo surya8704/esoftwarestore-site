@@ -10,13 +10,13 @@ export default function ProductImage({
   alt = '',
   className = 'h-full w-full object-cover',
   fallbackClassName = '',
-  visualAccent = 'from-slate-400 to-slate-600',
+  visualAccent = 'from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800',
   fallbackLabel = '',
   loading = 'lazy',
 }) {
-  const resolved = resolveStoreProductImage(
-    product ?? { imageUrl: src, name: name || alt, category: category || fallbackLabel, slug },
-  )
+  const productLike =
+    product ?? { imageUrl: src, name: name || alt, category: category || fallbackLabel, slug }
+  const resolved = resolveStoreProductImage(productLike)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -28,11 +28,11 @@ export default function ProductImage({
   if (!showImage) {
     return (
       <div
-        className={`flex h-full w-full items-center justify-center bg-gradient-to-br text-sm font-semibold text-white ${visualAccent} ${fallbackClassName}`}
+        className={`flex h-full w-full items-center justify-center bg-gradient-to-br text-sm font-semibold text-store-muted ${visualAccent} ${fallbackClassName}`}
         role="img"
         aria-label={alt || fallbackLabel || name || 'Product'}
       >
-        <span className="line-clamp-3 px-3 text-center">{fallbackLabel || name || alt || 'Software'}</span>
+        <span className="line-clamp-3 px-3 text-center">{fallbackLabel || name || alt || 'No image'}</span>
       </div>
     )
   }

@@ -2,7 +2,6 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import multipart from '@fastify/multipart'
-import fastifyStatic from '@fastify/static'
 import sensible from '@fastify/sensible'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,11 +51,8 @@ await app.register(cors, {
 await app.register(sensible)
 await app.register(jwt, { secret: config.jwtSecret })
 await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
-await app.register(fastifyStatic, {
-  root: uploadsDir,
-  prefix: '/uploads/',
-  decorateReply: false,
-})
+// Uploads are served by uploadRoutes (disk cache + MongoDB persistence).
+// Do not use fastify-static for /uploads — missing disk files must fall back to Mongo.
 registerAuth(app)
 
 app.get('/health', async () => ({ ok: true, version: '2.0.0' }))

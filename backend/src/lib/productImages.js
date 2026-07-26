@@ -273,7 +273,9 @@ export function isLegacyBrokenMediaUrl(url) {
   const value = String(url)
   // Placeholder stock photos — always regenerate
   if (value.includes('images.unsplash.com')) return true
-  // Keep real product image files (including WebP on the legacy host)
+  // Storefront domain no longer hosts WordPress media — SPA HTML is returned instead
+  if (/esoftwarestore\.com\/wp-content\//i.test(value)) return true
+  // Keep real product image files (including WebP on other hosts)
   if (looksLikeImageUrl(value)) return false
   if (value.includes('/wp-content/')) return true
   try {
@@ -288,32 +290,30 @@ export function isCustomUploadedImageUrl(url) {
   return Boolean(url && String(url).includes('/uploads/'))
 }
 
-export function shouldAutoGenerateProductImage(url) {
+/**
+ * Only admin-entered/uploaded images are used. Never invent a cover.
+ * Returns '' when the product has no usable manual image.
+ */
+export function resolveManualProductImageUrl(url) {
   const value = String(url ?? '').trim()
-  if (!value) return true
-  if (isLegacyBrokenMediaUrl(value)) return true
-  if (value.includes('/api/media/product-cover')) return true
-  return false
+  if (!value) return ''
+  if (value.includes('/api/media/product-cover')) return ''
+  if (value.includes('data:image/svg+xml')) return ''
+  if (value.includes('/uploads/')) return value
+  if (isLegacyBrokenMediaUrl(value)) return ''
+  return value
 }
 
-/** Persisted image URL for create/update — keeps custom uploads & external URLs, else branded cover. */
-export function resolveProductImageForSave(product, apiPublicUrl) {
-  const custom = String(product?.imageUrl ?? '').trim()
-  if (custom && !shouldAutoGenerateProductImage(custom)) {
-    return custom
-  }
-  return productCoverApiUrl(product, apiPublicUrl)
+/** @deprecated Use resolveManualProductImageUrl — auto covers are disabled. */
+export function shouldAutoGenerateProductImage(url) {
+  return !resolveManualProductImageUrl(url)
 }
 
-export function resolveStoreProductImage(product, apiPublicUrl = '') {
-  const custom = String(product?.imageUrl ?? '').trim()
-  if (
-    custom &&
-    !isLegacyBrokenMediaUrl(custom) &&
-    !custom.includes('/api/media/product-cover')
-  ) {
-    return custom
-  }
-  if (apiPublicUrl) return productCoverApiUrl(product, apiPublicUrl)
-  return productCoverDataUri(product)
+/** Persist only a manual image URL (upload or pasted). Never write generated covers. */
+export function resolveProductImageForSave(product) {
+  return resolveManualProductImageUrl(product?.imageUrl)
+}
+
+export function resolveStoreProductImage(product) {
+  return resolveManualProductImageUrl(product?.imageUrl)
 }

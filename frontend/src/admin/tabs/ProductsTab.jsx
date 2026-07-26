@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileSpreadsheet, ImagePlus, KeyRound, LoaderCircle, Package, Pencil, Plus, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react'
-import { dashboardApi, productCoverPreviewUrl, uploadProductImage, uploadProductLicenseKeys } from '../api'
+import { dashboardApi, uploadProductImage, uploadProductLicenseKeys } from '../api'
 import { isCustomProductImageUrl } from '../../lib/productImages'
 import { defaultVendorPermissions } from '../vendorAccess'
 import RegionalPricesEditor, {
@@ -248,18 +248,7 @@ export default function ProductsTab({
 
   const usesCustomImage = isCustomProductImageUrl(form.imageUrl)
 
-  const previewImageUrl = useMemo(() => {
-    if (usesCustomImage) return form.imageUrl
-    const name = String(form.name || '').trim()
-    if (name.length < 2) return ''
-    const slug = slugify(form.slug) || slugify(name)
-    return productCoverPreviewUrl({
-      name,
-      category: String(form.category || '').trim() || 'Windows',
-      slug,
-      productType: form.productType ?? 'standard',
-    })
-  }, [usesCustomImage, form.imageUrl, form.name, form.slug, form.category, form.productType])
+  const previewImageUrl = usesCustomImage ? form.imageUrl : ''
 
   const submit = async (e) => {
     e.preventDefault()
@@ -814,11 +803,9 @@ export default function ProductsTab({
               )}
             </div>
             <div className="flex-1 space-y-3">
-              {!usesCustomImage ? (
-                <p className="text-xs text-sky-700 dark:text-sky-300">
-                  Cover auto-generated from product name. Upload or paste a URL to override.
-                </p>
-              ) : null}
+              <p className="text-xs text-slate-500">
+                Upload an image or paste an image URL. Products without an image show a blank placeholder on the storefront.
+              </p>
               <input
                 ref={fileInputRef}
                 type="file"

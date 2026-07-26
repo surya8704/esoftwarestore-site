@@ -1,9 +1,8 @@
 import crypto from 'node:crypto'
-import { createWriteStream } from 'node:fs'
+import { createReadStream } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { pipeline } from 'node:stream/promises'
-import { Vendor } from '../db/models.js'
+import { UploadedFile, Vendor } from '../db/models.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 
 const ALLOWED_TYPES = new Set([
@@ -35,6 +34,8 @@ const EXT_BY_MIME = {
   'image/gif': 'gif',
 }
 
+const ALLOWED_SUBDIRS = new Set(['products', 'guides', 'trust-badges'])
+
 function resolveImageType(file) {
   const mime = String(file?.mimetype || '').toLowerCase().trim()
   if (ALLOWED_TYPES.has(mime)) {
@@ -55,6 +56,17 @@ function resolveImageType(file) {
   return null
 }
 
+function mimeFromFilename(filename) {
+  const ext = path.extname(filename).replace(/^\./, '').toLowerCase()
+  return MIME_BY_EXT[ext] || 'application/octet-stream'
+}
+
+async function readUploadBuffer(fileStream) {
+  const chunks = []
+  for await (const chunk of fileStream) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
+
 export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
   const productsDir = path.join(uploadsDir, 'products')
   const guidesDir = path.join(uploadsDir, 'guides')
@@ -72,11 +84,58 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
 
     const filename = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${resolved.ext}`
     const dest = path.join(uploadsDir, subdir, filename)
-    await pipeline(file.file, createWriteStream(dest))
+    const buffer = await readUploadBuffer(file.file)
+
+    // Disk cache (may be wiped on Render free tier) + MongoDB (persistent)
+    await fs.writeFile(dest, buffer)
+    await UploadedFile.findOneAndUpdate(
+      { subdir, filename },
+      {
+        subdir,
+        filename,
+        mime: resolved.mime,
+        data: buffer,
+        size: buffer.length,
+        createdAt: new Date(),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    )
 
     const imageUrl = `${apiPublicUrl}/uploads/${subdir}/${filename}`
     return { imageUrl, filename }
   }
+
+  // Persistent serve: disk first, then MongoDB (survives Render redeploys)
+  app.get('/uploads/:subdir/:filename', async (request, reply) => {
+    const subdir = String(request.params.subdir || '')
+    const filename = String(request.params.filename || '')
+    if (!ALLOWED_SUBDIRS.has(subdir) || !filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return reply.code(404).send({ error: 'Not found' })
+    }
+
+    const diskPath = path.join(uploadsDir, subdir, filename)
+    try {
+      await fs.access(diskPath)
+      reply
+        .type(mimeFromFilename(filename))
+        .header('Cache-Control', 'public, max-age=31536000, immutable')
+      return reply.send(createReadStream(diskPath))
+    } catch {
+      // fall through to MongoDB
+    }
+
+    const doc = await UploadedFile.findOne({ subdir, filename }).lean()
+    if (!doc?.data) {
+      return reply.code(404).send({ error: 'Not found' })
+    }
+
+    const payload = Buffer.isBuffer(doc.data) ? doc.data : Buffer.from(doc.data.buffer || doc.data)
+    return reply
+      .type(doc.mime || mimeFromFilename(filename))
+      .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .header('Content-Length', String(payload.length))
+      .send(payload)
+  })
 
   app.post('/api/upload/product-image', { preHandler: [app.requireStaff] }, async (request) => {
     if (request.user.role === 'vendor') {
@@ -103,7 +162,6 @@ export async function uploadRoutes(app, { uploadsDir, apiPublicUrl }) {
     const file = await request.file()
     return saveImageUpload(file, 'trust-badges')
   })
-
 
   app.get('/api/media/product-cover', async (request, reply) => {
     const { buildProductCoverSvg } = await import('../lib/productImages.js')

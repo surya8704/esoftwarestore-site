@@ -419,6 +419,16 @@ const storeSettingsSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 })
 
+const uploadedFileSchema = new mongoose.Schema({
+  subdir: { type: String, required: true, maxlength: 40, index: true },
+  filename: { type: String, required: true, maxlength: 200, index: true },
+  mime: { type: String, required: true, maxlength: 80 },
+  data: { type: Buffer, required: true },
+  size: { type: Number, required: true, default: 0 },
+  createdAt: { type: Date, default: Date.now, required: true },
+})
+uploadedFileSchema.index({ subdir: 1, filename: 1 }, { unique: true })
+
 export const User = mongoose.model('User', userSchema)
 export const Vendor = mongoose.model('Vendor', vendorSchema)
 export const VendorPayout = mongoose.model('VendorPayout', vendorPayoutSchema)
@@ -445,4 +455,5 @@ export const Guide = mongoose.model('Guide', guideSchema)
 export const Announcement = mongoose.model('Announcement', announcementSchema)
 export const ProductReview = mongoose.model('ProductReview', productReviewSchema)
 export const StoreSettings = mongoose.model('StoreSettings', storeSettingsSchema)
+export const UploadedFile = mongoose.model('UploadedFile', uploadedFileSchema)
 

@@ -238,9 +238,9 @@ export function productCoverDataUri(product) {
 
 export function getProductImageByName(productOrName, category = '', slug = '') {
   if (typeof productOrName === 'string') {
-    return productCoverDataUri({ name: productOrName, category, slug })
+    return resolveStoreProductImage({ name: productOrName, category, slug, imageUrl: '' })
   }
-  return productCoverDataUri(productOrName)
+  return resolveStoreProductImage(productOrName)
 }
 
 const IMAGE_EXT_RE = /\.(webp|wepg|jpe?g|png|gif|avif|svg|bmp|jfif)(?:\?|#|$)/i
@@ -258,7 +258,9 @@ export function isLegacyBrokenMediaUrl(url) {
   if (!url) return true
   const value = String(url)
   if (value.includes('images.unsplash.com')) return true
-  // Keep real product image files (including WebP on the legacy host)
+  // Storefront domain no longer hosts WordPress media — SPA HTML is returned instead
+  if (/esoftwarestore\.com\/wp-content\//i.test(value)) return true
+  // Keep real product image files (including WebP on other hosts)
   if (looksLikeImageUrl(value)) return false
   if (value.includes('/wp-content/')) return true
   try {
@@ -292,13 +294,16 @@ export function productCoverApiUrl(product, apiBase) {
 }
 
 export function resolveStoreProductImage(product) {
-  const custom = String(product?.imageUrl ?? '').trim()
-  if (
-    custom &&
-    !isLegacyBrokenMediaUrl(custom) &&
-    !custom.includes('/api/media/product-cover')
-  ) {
-    return custom
+  let custom = String(product?.imageUrl ?? '').trim()
+  if (custom.startsWith('/uploads/')) {
+    const base = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+    if (base) custom = `${base}${custom}`
   }
-  return productCoverDataUri(product)
+  // Manual images only — never invent a cover
+  if (!custom) return ''
+  if (custom.includes('/api/media/product-cover')) return ''
+  if (custom.includes('data:image/svg+xml')) return ''
+  if (custom.includes('/uploads/')) return custom
+  if (isLegacyBrokenMediaUrl(custom)) return ''
+  return custom
 }

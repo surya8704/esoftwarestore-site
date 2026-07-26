@@ -10,7 +10,7 @@ import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
 import ProductImage from '../components/ProductImage'
-import ProductDescription from '../components/ProductDescription'
+import ProductDescription, { splitDescriptionParts } from '../components/ProductDescription'
 import ProductReviews, { ProductRatingBadge } from '../components/ProductReviews'
 import TrustBadge from '../components/TrustBadge'
 import VariantPicker from '../components/VariantPicker'
@@ -102,6 +102,11 @@ export default function ProductPage() {
   const displayDescription =
     (selected?.description && String(selected.description).trim()) ||
     product?.description ||
+    ''
+  const { bullets: featureBullets, description: proseDescription } = splitDescriptionParts(displayDescription)
+  const displaySku =
+    (selected?.sku && String(selected.sku).trim()) ||
+    (product?.sku && String(product.sku).trim()) ||
     ''
   const basePrice = selected?.displayPrice ?? selected?.price ?? product?.displayPrice ?? product?.price ?? 0
   const compareAt =
@@ -213,6 +218,19 @@ export default function ProductPage() {
                 Part of <span className="font-medium text-store-heading">{product.name}</span>
               </p>
             ) : null}
+            {displaySku ? (
+              <p className="mt-2 text-xs text-store-muted">
+                SKU: <span className="font-semibold text-store-heading">{displaySku}</span>
+              </p>
+            ) : null}
+
+            {featureBullets.length ? (
+              <ul className="product-desc-list product-desc-list--bullets mt-4">
+                {featureBullets.map((bullet, index) => (
+                  <li key={`feature-${index}`}>{bullet}</li>
+                ))}
+              </ul>
+            ) : null}
 
             {isBundle && bundleContents.length ? (
               <div className="mt-4 rounded-2xl border border-store bg-store-hover/60 p-4">
@@ -276,12 +294,6 @@ export default function ProductPage() {
                 ) : null}
               </div>
             ) : null}
-
-            <ProductDescription
-              text={displayDescription}
-              clamp
-              className="mt-4 text-sm leading-relaxed text-store-body"
-            />
 
             <div className="mt-5 flex flex-wrap gap-2">
               <span className="rounded-full bg-store-primary-muted px-3 py-1 text-xs font-semibold text-[#ea580c]">{soldRecently} sold recently</span>
@@ -403,8 +415,12 @@ export default function ProductPage() {
           <div className="prose-store max-w-none py-6">
             {tab === 'description' ? (
               <div>
-                <h2 className="text-lg font-bold text-store-heading">Introduction</h2>
-                <ProductDescription text={displayDescription} className="mt-3 space-y-3" />
+                <h2 className="text-lg font-bold text-store-heading">Description</h2>
+                {proseDescription ? (
+                  <ProductDescription text={proseDescription} mode="prose" className="mt-3 space-y-3" />
+                ) : (
+                  <p className="mt-3 text-sm text-store-muted">No product description yet.</p>
+                )}
               </div>
             ) : null}
             {tab === 'shipping' ? (

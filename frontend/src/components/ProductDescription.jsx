@@ -96,15 +96,43 @@ export function parseDescriptionBlocks(text) {
   return blocks
 }
 
-export default function ProductDescription({ text, className = '', clamp = false }) {
+/** Feature bullets for the buy box; remaining prose for the Description tab. */
+export function splitDescriptionParts(text) {
   const blocks = parseDescriptionBlocks(text)
+  const bullets = []
+  const paragraphs = []
 
-  if (!blocks.length) return null
+  for (const block of blocks) {
+    if (block.type === 'ul' || block.type === 'ol') {
+      for (const item of block.items || []) {
+        if (item) bullets.push(item)
+      }
+    } else if (block.type === 'p' && block.text) {
+      paragraphs.push(block.text)
+    }
+  }
+
+  return {
+    bullets,
+    description: paragraphs.join('\n\n').trim(),
+  }
+}
+
+export default function ProductDescription({ text, className = '', clamp = false, mode = 'all' }) {
+  const blocks = parseDescriptionBlocks(text)
+  const filtered =
+    mode === 'bullets'
+      ? blocks.filter((b) => b.type === 'ul' || b.type === 'ol')
+      : mode === 'prose'
+        ? blocks.filter((b) => b.type === 'p')
+        : blocks
+
+  if (!filtered.length) return null
 
   if (clamp) {
     const preview =
-      blocks.find((b) => b.type === 'p')?.text ||
-      blocks.find((b) => b.items)?.items?.[0] ||
+      filtered.find((b) => b.type === 'p')?.text ||
+      filtered.find((b) => b.items)?.items?.[0] ||
       ''
     if (!preview) return null
     return <p className={`line-clamp-4 ${className}`.trim()}>{preview}</p>
@@ -112,7 +140,7 @@ export default function ProductDescription({ text, className = '', clamp = false
 
   return (
     <div className={`product-description ${className}`.trim()}>
-      {blocks.map((block, index) => {
+      {filtered.map((block, index) => {
         if (block.type === 'p') {
           return (
             <p key={`p-${index}`} className="leading-relaxed">

@@ -3,7 +3,7 @@ import { Package, ShoppingCart, Star, X } from 'lucide-react'
 import { formatPrice, discountPercent } from '../lib/api'
 import { reviewCountForProduct } from '../lib/reviews'
 import ProductImage from './ProductImage'
-import ProductDescription from './ProductDescription'
+import { splitDescriptionParts } from './ProductDescription'
 
 export default function QuickViewModal({ product, currency, onClose, onAddToCart }) {
   if (!product) return null
@@ -15,6 +15,7 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
   const reviewCount = product.reviewCount ?? reviewCountForProduct(product)
   const isBundle = product.isBundle || product.productType === 'bundle'
   const bundleContents = product.bundleContents ?? []
+  const { bullets: featureBullets } = splitDescriptionParts(product.description)
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center p-0 sm:items-center sm:p-4">
@@ -70,11 +71,15 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
               </ul>
             ) : null}
 
-            <ProductDescription
-              text={product.description}
-              clamp
-              className="mt-4 flex-1 text-sm leading-relaxed text-store-muted"
-            />
+            {featureBullets.length ? (
+              <ul className="product-desc-list product-desc-list--bullets mt-4 flex-1">
+                {featureBullets.slice(0, 5).map((bullet, index) => (
+                  <li key={`qv-bullet-${index}`}>{bullet}</li>
+                ))}
+              </ul>
+            ) : product.description ? (
+              <p className="mt-4 line-clamp-4 flex-1 text-sm leading-relaxed text-store-muted">{product.description}</p>
+            ) : null}
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button type="button" onClick={() => onAddToCart(product)} className="btn-store-primary">
