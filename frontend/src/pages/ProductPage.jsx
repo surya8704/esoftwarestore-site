@@ -437,7 +437,9 @@ export default function ProductPage() {
             ) : null}
             {tab === 'detail' ? (
               <ul className="product-desc-list product-desc-list--bullets">
-                {selected ? <li>Edition: {selected.tierLabel || selected.name}</li> : null}
+                {hasMultipleVariants && selected ? (
+                  <li>Edition: {selected.tierLabel || selected.name}</li>
+                ) : null}
                 <li>License type: {product.licenseType}</li>
                 <li>Category: {product.category}</li>
                 <li>{resolveShippingBullets(product)[0]}</li>

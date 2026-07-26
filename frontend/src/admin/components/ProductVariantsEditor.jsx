@@ -125,10 +125,10 @@ export default function ProductVariantsEditor({
     <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Product variants / editions</p>
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Product variants / editions (optional)</p>
           <p className="mt-1 text-xs text-slate-500">
-            Each edition has its own name, price, description, and optional image — shown when customers select it
-            (e.g. Windows 11 Home vs Windows 11 Pro).
+            Most products need no editions. Add them only when customers must choose options
+            (e.g. Windows 11 Home vs Pro). Leave empty for a single price.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -157,7 +157,7 @@ export default function ProductVariantsEditor({
 
       {!rows.length ? (
         <p className="mt-4 rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:bg-white/5">
-          No editions yet. Leave empty to use a single Standard variant from the product price, or add editions above.
+          No editions — this product uses the main price only. Add editions only if you need multiple options.
         </p>
       ) : (
         <div className="mt-4 space-y-3">
@@ -183,7 +183,7 @@ export default function ProductVariantsEditor({
                   </button>
                   <button
                     type="button"
-                    disabled={disabled || rows.length <= 1}
+                    disabled={disabled}
                     onClick={() => removeRow(index)}
                     className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-500/10"
                     aria-label="Remove edition"

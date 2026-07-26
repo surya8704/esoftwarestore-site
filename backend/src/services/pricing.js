@@ -70,10 +70,11 @@ function resolveFromContext(product, context, { countryCode, currency, variantId
     }
   }
 
-  // Edition variants (Windows 11 / Pro / Enterprise): honor the selected variant price.
-  // Only fall back to qty-based tier variants when no specific edition was chosen.
+  // Qty-based price tiers only (tierMinQty > 1). Edition variants use tierMinQty=1
+  // and must not override product price when no edition was selected.
   if (!variantId) {
-    const tier = [...productVariants]
+    const qtyTiers = productVariants.filter((item) => Number(item.tierMinQty) > 1)
+    const tier = [...qtyTiers]
       .sort((a, b) => a.tierMinQty - b.tierMinQty)
       .reverse()
       .find((item) => quantity >= item.tierMinQty)

@@ -7,7 +7,6 @@ import { validateAndNormalizeBundleItems, buildBundleProductName } from '../lib/
 import { config } from '../config.js'
 import { normalizeVendorPermissions, vendorHasPermission } from '../lib/vendorPermissions.js'
 import {
-  ensureDefaultVariant,
   listVariantsByProductIds,
   listVariantsForProduct,
   syncProductVariants,
@@ -165,7 +164,7 @@ function productWriteFields(payload) {
   }
 }
 
-/** Persist variants when the client sent a variants array; otherwise ensure a default exists. */
+/** Persist variants when the client sent a variants array; otherwise keep existing editions. */
 export async function persistProductVariants(product, variantsInput, { forceSync = false } = {}) {
   if (forceSync || Array.isArray(variantsInput)) {
     const result = await syncProductVariants(product, variantsInput ?? [])
@@ -175,7 +174,7 @@ export async function persistProductVariants(product, variantsInput, { forceSync
     }
     return result.variants
   }
-  return ensureDefaultVariant(product)
+  return listVariantsForProduct(product._id ?? product.id)
 }
 
 export async function attachVariantsToProducts(products = []) {

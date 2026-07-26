@@ -417,20 +417,32 @@ export default function ProductsTab({
       vendorId: product.vendorId ?? '',
       allowedCountries: product.allowedCountries ?? [],
       blockedCountries: product.blockedCountries ?? [],
-      variants: Array.isArray(product.variants)
-        ? product.variants.map((v) => ({
-            id: v.id,
-            name: v.name ?? '',
-            sku: v.sku ?? '',
-            price: v.price,
-            originalPrice: v.originalPrice,
-            stock: v.stock ?? 0,
-            description: v.description ?? '',
-            imageUrl: v.imageUrl ?? '',
-            tierLabel: v.tierLabel ?? '',
-            isDefault: Boolean(v.isDefault),
-          }))
-        : [],
+      variants: (() => {
+        const mapped = Array.isArray(product.variants)
+          ? product.variants.map((v) => ({
+              id: v.id,
+              name: v.name ?? '',
+              sku: v.sku ?? '',
+              price: v.price,
+              originalPrice: v.originalPrice,
+              stock: v.stock ?? 0,
+              description: v.description ?? '',
+              imageUrl: v.imageUrl ?? '',
+              tierLabel: v.tierLabel ?? '',
+              isDefault: Boolean(v.isDefault),
+            }))
+          : []
+        // Drop auto-created lone "Standard" so products without real editions stay simple
+        if (
+          mapped.length === 1 &&
+          /^standard$/i.test(String(mapped[0].name || '').trim()) &&
+          !String(mapped[0].description || '').trim() &&
+          !String(mapped[0].imageUrl || '').trim()
+        ) {
+          return []
+        }
+        return mapped
+      })(),
       showOnHomepage: product.showOnHomepage !== false,
     })
     setBundlePickId('')

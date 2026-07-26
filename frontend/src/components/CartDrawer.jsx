@@ -75,7 +75,7 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove, on
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold leading-snug text-store-heading">{item.product?.name}</p>
-                    {item.variantName ? (
+                    {item.variantName && !/^standard$/i.test(String(item.variantName).trim()) ? (
                       <p className="mt-0.5 text-xs text-store-muted">Edition: {item.variantName}</p>
                     ) : null}
                     <p className="mt-1 text-sm font-bold text-[#f97316]">

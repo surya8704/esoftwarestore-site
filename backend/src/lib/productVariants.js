@@ -100,29 +100,23 @@ async function uniqueSku(baseSku, { excludeId } = {}) {
 
 /**
  * Replace/sync edition variants for a product.
- * Always leaves at least one active default variant.
+ * Empty input clears all editions — products without variations stay variant-free.
  */
 export async function syncProductVariants(product, variantsInput) {
   const productId = product._id ?? product.id
   const productSlug = slugPart(product.slug || product.name) || 'product'
   const list = Array.isArray(variantsInput) ? variantsInput : []
 
-  const parsed = list.length
-    ? z.array(variantInputSchema).parse(list)
-    : [
-        {
-          name: 'Standard',
-          sku: `${productSlug}-std`,
-          price: Number(product.price),
-          originalPrice: Number(product.originalPrice || product.price),
-          stock: Math.max(0, Number(product.stock) || 0),
-          description: String(product.description || ''),
-          imageUrl: '',
-          tierLabel: '',
-          isDefault: true,
-          active: true,
-        },
-      ]
+  // No editions provided → deactivate any existing variants and keep product-level pricing
+  if (!list.length) {
+    await ProductVariant.updateMany(
+      { productId },
+      { $set: { active: false, isDefault: false } },
+    )
+    return { variants: [], productPricePatch: null }
+  }
+
+  const parsed = z.array(variantInputSchema).parse(list)
 
   // Exactly one default
   let defaultIndex = parsed.findIndex((v) => v.isDefault)
@@ -205,11 +199,7 @@ export async function syncProductVariants(product, variantsInput) {
   return { variants: [], productPricePatch: null }
 }
 
-/** Ensure a brand-new product has at least one Standard variant. */
+/** Return existing active variants only — never invent a default edition. */
 export async function ensureDefaultVariant(product) {
-  const productId = product._id ?? product.id
-  const count = await ProductVariant.countDocuments({ productId, active: true })
-  if (count > 0) return listVariantsForProduct(productId)
-  const { variants } = await syncProductVariants(product, [])
-  return variants
+  return listVariantsForProduct(product._id ?? product.id)
 }
