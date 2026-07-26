@@ -32,14 +32,14 @@ const productSchema = z
     licenseType: z.string().trim().min(2, 'License type is required'),
     imageUrl: z
       .string()
-      .max(500)
+      .max(1000)
       .optional()
       .transform((v) => (v == null ? '' : String(v).trim()))
       .refine((v) => !v || v.startsWith('/') || /^https?:\/\//i.test(v), {
         message: 'Image URL must be empty, a site path, or a full http(s) URL',
       }),
     visualAccent: z.string().min(3).default('from-sky-500 to-cyan-400'),
-    description: z.string().max(1000).optional().default(''),
+    description: z.string().max(50000).optional().default(''),
     shippingTitle: z.string().max(160).optional().default(''),
     shippingText: z.string().max(4000).optional().default(''),
     deliveryText: z.string().max(2000).optional().default(''),

@@ -3,6 +3,7 @@ import { Package, ShoppingCart, Star, X } from 'lucide-react'
 import { formatPrice, discountPercent } from '../lib/api'
 import { reviewCountForProduct } from '../lib/reviews'
 import ProductImage from './ProductImage'
+import ProductDescription from './ProductDescription'
 
 export default function QuickViewModal({ product, currency, onClose, onAddToCart }) {
   if (!product) return null
@@ -69,7 +70,11 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
               </ul>
             ) : null}
 
-            <p className="mt-4 flex-1 text-sm leading-relaxed text-store-muted">{product.description}</p>
+            <ProductDescription
+              text={product.description}
+              clamp
+              className="mt-4 flex-1 text-sm leading-relaxed text-store-muted"
+            />
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button type="button" onClick={() => onAddToCart(product)} className="btn-store-primary">

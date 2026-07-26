@@ -47,7 +47,7 @@ export const products = mysqlTable('products', {
   rating: int('rating').notNull(),
   stock: int('stock').notNull(),
   licenseType: varchar('license_type', { length: 80 }).notNull(),
-  imageUrl: varchar('image_url', { length: 500 }),
+  imageUrl: varchar('image_url', { length: 1000 }),
   visualAccent: varchar('visual_accent', { length: 80 }).notNull().default('from-sky-500 to-cyan-400'),
   description: text('description'),
   hidePrice: boolean('hide_price').notNull().default(false),

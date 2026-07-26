@@ -17,10 +17,17 @@ const ACCENTS = [
 
 function stripHtml(html = '') {
   return html
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n- ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim()
 }
 
@@ -51,7 +58,7 @@ function transform(product, index) {
   const regular = toRupees(prices.regular_price)
   const originalPrice = regular > price ? regular : Math.round(price * 1.35)
   const category = mapCategory(product.categories?.[0]?.name)
-  const description = stripHtml(product.short_description || product.description).slice(0, 1000)
+  const description = stripHtml(product.short_description || product.description)
 
   return {
     externalId: product.id,

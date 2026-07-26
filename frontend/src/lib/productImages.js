@@ -243,11 +243,24 @@ export function getProductImageByName(productOrName, category = '', slug = '') {
   return productCoverDataUri(productOrName)
 }
 
+const IMAGE_EXT_RE = /\.(webp|wepg|jpe?g|png|gif|avif|svg|bmp|jfif)(?:\?|#|$)/i
+
+function looksLikeImageUrl(url) {
+  const value = String(url ?? '').trim()
+  if (!value) return false
+  if (value.includes('/uploads/')) return true
+  if (IMAGE_EXT_RE.test(value)) return true
+  if (/^data:image\//i.test(value)) return true
+  return false
+}
+
 export function isLegacyBrokenMediaUrl(url) {
   if (!url) return true
   const value = String(url)
-  if (value.includes('/wp-content/')) return true
   if (value.includes('images.unsplash.com')) return true
+  // Keep real product image files (including WebP on the legacy host)
+  if (looksLikeImageUrl(value)) return false
+  if (value.includes('/wp-content/')) return true
   try {
     const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase()
     return host === 'esoftwarestore.com'
@@ -279,8 +292,12 @@ export function productCoverApiUrl(product, apiBase) {
 }
 
 export function resolveStoreProductImage(product) {
-  const custom = product?.imageUrl
-  if (custom && !isLegacyBrokenMediaUrl(custom) && String(custom).includes('/uploads/')) {
+  const custom = String(product?.imageUrl ?? '').trim()
+  if (
+    custom &&
+    !isLegacyBrokenMediaUrl(custom) &&
+    !custom.includes('/api/media/product-cover')
+  ) {
     return custom
   }
   return productCoverDataUri(product)

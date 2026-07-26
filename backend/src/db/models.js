@@ -65,7 +65,7 @@ const productSchema = new mongoose.Schema({
   rating: { type: Number, required: true },
   stock: { type: Number, required: true },
   licenseType: { type: String, required: true, maxlength: 80 },
-  imageUrl: { type: String, maxlength: 500 },
+  imageUrl: { type: String, maxlength: 1000 },
   visualAccent: { type: String, required: true, maxlength: 80, default: 'from-sky-500 to-cyan-400' },
   description: String,
   shippingTitle: { type: String, maxlength: 160, default: '' },

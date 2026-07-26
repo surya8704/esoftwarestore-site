@@ -41,9 +41,13 @@ function resolveImageType(file) {
     return { mime, ext: EXT_BY_MIME[mime] || 'jpg' }
   }
 
+  // Windows / some browsers send WebP as empty or application/octet-stream
   const original = String(file?.filename || file?.fieldname || '')
   const rawExt = path.extname(original).replace(/^\./, '').toLowerCase()
   const mimeFromExt = MIME_BY_EXT[rawExt]
+  if (mimeFromExt && (!mime || mime === 'application/octet-stream' || mime === 'binary/octet-stream')) {
+    return { mime: mimeFromExt, ext: EXT_BY_MIME[mimeFromExt] || rawExt }
+  }
   if (mimeFromExt) {
     return { mime: mimeFromExt, ext: EXT_BY_MIME[mimeFromExt] || rawExt }
   }

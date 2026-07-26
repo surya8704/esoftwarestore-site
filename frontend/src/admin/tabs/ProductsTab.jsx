@@ -796,7 +796,15 @@ export default function ProductsTab({
         ) : null}
         <label className="sm:col-span-2">
           <span className="mb-1 block text-xs font-medium">Description</span>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5" />
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder={'Write a full product description.\n\n- Use a dash for bullet points\n- One point per line\n1. Or numbered lists'}
+            className="min-h-36 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            No character limit. Start lines with - or 1. to show bullet/numbered lists on the product page.
+          </span>
         </label>
 
         <div className="sm:col-span-2 rounded-2xl border border-slate-200 p-4 dark:border-white/10">

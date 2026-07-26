@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext'
 import SEO from '../components/SEO'
 import ProductCard from '../components/ProductCard'
 import ProductImage from '../components/ProductImage'
+import ProductDescription from '../components/ProductDescription'
 import ProductReviews, { ProductRatingBadge } from '../components/ProductReviews'
 import TrustBadge from '../components/TrustBadge'
 
@@ -246,7 +247,11 @@ export default function ProductPage() {
               </div>
             ) : null}
 
-            <p className="mt-4 text-sm leading-relaxed text-store-body">{product.description}</p>
+            <ProductDescription
+              text={product.description}
+              clamp
+              className="mt-4 text-sm leading-relaxed text-store-body"
+            />
 
             <div className="mt-5 flex flex-wrap gap-2">
               <span className="rounded-full bg-store-primary-muted px-3 py-1 text-xs font-semibold text-[#ea580c]">{soldRecently} sold recently</span>
@@ -374,11 +379,11 @@ export default function ProductPage() {
             ))}
           </div>
 
-          <div className="prose prose-sm max-w-none py-6 text-store-body">
+          <div className="prose-store max-w-none py-6">
             {tab === 'description' ? (
               <div>
                 <h2 className="text-lg font-bold text-store-heading">Introduction</h2>
-                <p className="mt-3 leading-relaxed">{product.description}</p>
+                <ProductDescription text={product.description} className="mt-3 space-y-3" />
               </div>
             ) : null}
             {tab === 'shipping' ? (
