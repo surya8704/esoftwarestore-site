@@ -1,3 +1,4 @@
+import mongoose from 'mongoose'
 import { z } from 'zod'
 import { mapId } from '../db/client.js'
 import { ProductVariant } from '../db/models.js'
@@ -37,10 +38,7 @@ export const variantInputSchema = z.object({
   active: z.boolean().optional().default(true),
 })
 
-export const variantsArraySchema = z
-  .array(variantInputSchema)
-  .max(40)
-  .optional()
+export const variantsArraySchema = z.array(variantInputSchema).max(40).default([])
 
 function slugPart(value = '') {
   return String(value)
@@ -48,6 +46,14 @@ function slugPart(value = '') {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
+}
+
+function asObjectId(value) {
+  if (!value) return value
+  if (value instanceof mongoose.Types.ObjectId) return value
+  const raw = String(value)
+  if (mongoose.Types.ObjectId.isValid(raw)) return new mongoose.Types.ObjectId(raw)
+  return value
 }
 
 export function normalizeVariant(variant) {
@@ -67,13 +73,16 @@ export function normalizeVariant(variant) {
 }
 
 export async function listVariantsForProduct(productId) {
-  const rows = await ProductVariant.find({ productId, active: true }).sort({ isDefault: -1, name: 1 }).lean()
+  const rows = await ProductVariant.find({ productId: asObjectId(productId), active: true })
+    .sort({ isDefault: -1, name: 1 })
+    .lean()
   return rows.map(normalizeVariant)
 }
 
 export async function listVariantsByProductIds(productIds = []) {
   if (!productIds.length) return new Map()
-  const rows = await ProductVariant.find({ productId: { $in: productIds }, active: true })
+  const ids = productIds.map(asObjectId)
+  const rows = await ProductVariant.find({ productId: { $in: ids }, active: true })
     .sort({ isDefault: -1, name: 1 })
     .lean()
   const map = new Map()
@@ -100,25 +109,22 @@ async function uniqueSku(baseSku, { excludeId } = {}) {
 
 /**
  * Replace/sync edition variants for a product.
- * Empty input clears all editions — products without variations stay variant-free.
+ * Empty input deletes all editions — products without variations stay variant-free.
+ * Removed editions are hard-deleted so they cannot reappear.
  */
 export async function syncProductVariants(product, variantsInput) {
-  const productId = product._id ?? product.id
+  const productId = asObjectId(product._id ?? product.id)
   const productSlug = slugPart(product.slug || product.name) || 'product'
-  const list = Array.isArray(variantsInput) ? variantsInput : []
+  const list = Array.isArray(variantsInput) ? variantsInput.filter(Boolean) : []
 
-  // No editions provided → deactivate any existing variants and keep product-level pricing
+  // No editions → permanently remove all variants for this product
   if (!list.length) {
-    await ProductVariant.updateMany(
-      { productId },
-      { $set: { active: false, isDefault: false } },
-    )
+    await ProductVariant.deleteMany({ productId })
     return { variants: [], productPricePatch: null }
   }
 
   const parsed = z.array(variantInputSchema).parse(list)
 
-  // Exactly one default
   let defaultIndex = parsed.findIndex((v) => v.isDefault)
   if (defaultIndex < 0) defaultIndex = 0
   const normalized = parsed.map((v, i) => ({
@@ -131,9 +137,7 @@ export async function syncProductVariants(product, variantsInput) {
   const keepIds = new Set()
 
   for (const item of normalized) {
-    const baseSku =
-      item.sku ||
-      `${productSlug}-${slugPart(item.name) || 'edition'}`
+    const baseSku = item.sku || `${productSlug}-${slugPart(item.name) || 'edition'}`
     const sku = await uniqueSku(baseSku, { excludeId: item.id })
 
     if (item.id) {
@@ -149,7 +153,7 @@ export async function syncProductVariants(product, variantsInput) {
         row.tierLabel = item.tierLabel || item.name
         row.tierMinQty = 1
         row.isDefault = item.isDefault
-        row.active = item.active
+        row.active = true
         await row.save()
         keepIds.add(String(row._id))
         continue
@@ -168,20 +172,17 @@ export async function syncProductVariants(product, variantsInput) {
       tierLabel: item.tierLabel || item.name,
       tierMinQty: 1,
       isDefault: item.isDefault,
-      active: item.active,
+      active: true,
     })
     keepIds.add(String(created._id))
   }
 
-  for (const row of existing) {
-    if (!keepIds.has(String(row._id))) {
-      row.active = false
-      row.isDefault = false
-      await row.save()
-    }
-  }
+  // Hard-delete any editions not in the saved list (fixes soft-delete "coming back")
+  const removeFilter = keepIds.size
+    ? { productId, _id: { $nin: [...keepIds].map(asObjectId) } }
+    : { productId }
+  await ProductVariant.deleteMany(removeFilter)
 
-  // Mirror default variant pricing onto product for list/catalog consistency
   const defaults = await ProductVariant.find({ productId, active: true, isDefault: true }).lean()
   const fallback = await ProductVariant.findOne({ productId, active: true }).sort({ name: 1 }).lean()
   const primary = defaults[0] || fallback

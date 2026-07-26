@@ -629,8 +629,8 @@ export async function adminRoutes(app) {
       vendorId: payload.vendorId || null,
       ...productWriteFields(payload),
     })
-    const variants = await persistProductVariants(product, payload.variants, {
-      forceSync: Array.isArray(request.body?.variants),
+    const variants = await persistProductVariants(product, payload.variants ?? [], {
+      forceSync: true,
     })
     const refreshed = await Product.findById(product._id)
     return { product: { ...normalizeProduct(refreshed), variants } }
@@ -652,8 +652,8 @@ export async function adminRoutes(app) {
       { new: true },
     )
     if (!product) return reply.notFound('Product not found')
-    const variants = await persistProductVariants(product, payload.variants, {
-      forceSync: Array.isArray(request.body?.variants),
+    const variants = await persistProductVariants(product, payload.variants ?? [], {
+      forceSync: true,
     })
     const refreshed = await Product.findById(product._id)
     return { product: { ...normalizeProduct(refreshed), variants } }

@@ -51,7 +51,7 @@ export default function ProductVariantsEditor({
     onChange([
       ...rows,
       blankVariant({
-        name: isFirst ? 'Standard' : '',
+        name: '',
         price: productPrice || 29,
         originalPrice: productOriginalPrice || productPrice || 79,
         stock: productStock ?? 10,

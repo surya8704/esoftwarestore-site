@@ -337,8 +337,8 @@ export async function vendorRoutes(app) {
       vendorId,
       ...productWriteFields(payload),
     })
-    const variants = await persistProductVariants(product, payload.variants, {
-      forceSync: Array.isArray(request.body?.variants),
+    const variants = await persistProductVariants(product, payload.variants ?? [], {
+      forceSync: true,
     })
     const refreshed = await Product.findById(product._id)
     return { product: { ...normalizeProduct(refreshed), variants } }
@@ -368,8 +368,8 @@ export async function vendorRoutes(app) {
     }
 
     const product = await Product.findByIdAndUpdate(request.params.id, fields, { new: true })
-    const variants = await persistProductVariants(product, payload.variants, {
-      forceSync: Array.isArray(request.body?.variants),
+    const variants = await persistProductVariants(product, payload.variants ?? [], {
+      forceSync: true,
     })
     const refreshed = await Product.findById(product._id)
     return { product: { ...normalizeProduct(refreshed), variants } }

@@ -274,7 +274,7 @@ export default function ProductsTab({
 
       const variantsPayload = (form.variants ?? [])
         .map((v) => ({
-          id: v.id || undefined,
+          id: v.id ? String(v.id) : undefined,
           name: String(v.name || '').trim(),
           sku: String(v.sku || '').trim(),
           price: Math.round(Number(v.price) * 100) / 100,
@@ -299,6 +299,7 @@ export default function ProductsTab({
       }
 
       const defaultVariant = variantsPayload.find((v) => v.isDefault) ?? variantsPayload[0]
+      // Always send an array so the API can clear editions when empty
       const body = {
         name,
         slug,
@@ -878,17 +879,21 @@ export default function ProductsTab({
             disabled={loading}
             canUploadImages={canUploadImages}
             onChange={(variants) => {
-              const def = variants.find((v) => v.isDefault) ?? variants[0]
+              const next = Array.isArray(variants) ? variants : []
+              const def = next.length ? next.find((v) => v.isDefault) ?? next[0] : null
               setForm((prev) => ({
                 ...prev,
-                variants,
+                variants: next,
                 ...(def
                   ? {
-                      price: def.price || prev.price,
-                      originalPrice: def.originalPrice || prev.originalPrice,
+                      price: def.price !== '' && def.price != null ? def.price : prev.price,
+                      originalPrice:
+                        def.originalPrice !== '' && def.originalPrice != null
+                          ? def.originalPrice
+                          : prev.originalPrice,
                       stock: def.stock ?? prev.stock,
                     }
-                  : null),
+                  : {}),
               }))
             }}
           />

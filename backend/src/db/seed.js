@@ -4,7 +4,6 @@ import {
   Affiliate,
   Coupon,
   Product,
-  ProductVariant,
   SupportVideo,
   User,
   Vendor,
@@ -33,18 +32,6 @@ export async function seedDatabase() {
         description: item.description,
         shippingBullets: Array.isArray(item.shippingBullets) ? item.shippingBullets : [],
         downloadUrl: item.downloadUrl,
-      })
-
-      await ProductVariant.create({
-        productId: product._id,
-        name: 'Standard',
-        sku: `${item.slug}-std`,
-        price: item.price,
-        originalPrice: item.originalPrice,
-        stock: item.stock ?? 10,
-        tierMinQty: 1,
-        tierLabel: '1 License',
-        isDefault: true,
       })
 
       await seedLicensePool(product._id, 0)
