@@ -1,7 +1,9 @@
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Eye, Package, ShoppingCart, Star } from 'lucide-react'
 import { formatPrice, discountPercent, formatSoldRecently } from '../lib/api'
 import { reviewCountForProduct } from '../lib/reviews'
+import { useApp } from '../context/AppContext'
 import ProductImage from './ProductImage'
 
 function StarRating({ rating = 0, count }) {
@@ -26,6 +28,7 @@ function StarRating({ rating = 0, count }) {
 }
 
 export default function ProductCard({ product, currency, onQuickView, onAddToCart, compact = false }) {
+  const { cart } = useApp()
   const price = product.displayPrice ?? product.price
   const discount = discountPercent(price, product.originalPrice)
   const hasOriginal = product.originalPrice && product.originalPrice > price
@@ -33,6 +36,14 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
   const reviewCount = product.reviewCount ?? reviewCountForProduct(product)
   const isBundle = product.isBundle || product.productType === 'bundle'
   const bundleCount = product.bundleContents?.length ?? product.bundleItems?.length ?? 0
+  const productId = String(product.id ?? product._id ?? '')
+  const cartQuantity = useMemo(() => {
+    if (!productId) return 0
+    return (cart?.items ?? []).reduce((sum, item) => {
+      const itemProductId = String(item.productId ?? item.product?.id ?? '')
+      return itemProductId === productId ? sum + (item.quantity ?? 1) : sum
+    }, 0)
+  }, [cart?.items, productId])
 
   return (
     <article className="product-card group relative flex h-full flex-col">
@@ -69,10 +80,6 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
           {soldRecently} sold recently
         </p>
 
-        {!compact ? (
-          <p className="mt-2 hidden line-clamp-2 text-xs leading-relaxed text-store-muted sm:block">{product.description}</p>
-        ) : null}
-
         <div className="mt-auto pt-3 sm:pt-4">
           {!product.hidePrice ? (
             <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2">
@@ -99,9 +106,16 @@ export default function ProductCard({ product, currency, onQuickView, onAddToCar
               <button
                 type="button"
                 onClick={() => onAddToCart?.(product)}
-                className="btn-store-primary min-h-[44px] flex-1 px-3 text-xs sm:flex-none sm:px-4 sm:text-[0.8125rem]"
+                className="btn-store-primary relative min-h-[44px] flex-1 px-3 text-xs sm:flex-none sm:px-4 sm:text-[0.8125rem]"
+                aria-label={cartQuantity > 0 ? `Add to cart, ${cartQuantity} in cart` : 'Add to cart'}
               >
-                <ShoppingCart size={14} /> Add
+                <ShoppingCart size={14} />
+                Add
+                {cartQuantity > 0 ? (
+                  <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                    {cartQuantity > 99 ? '99+' : cartQuantity}
+                  </span>
+                ) : null}
               </button>
             ) : null}
           </div>
