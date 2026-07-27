@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getCartTotalQuantity } from '../lib/cartHelpers'
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { formatPrice } from '../lib/api'
 import ProductImage from './ProductImage'
@@ -13,6 +14,7 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove, on
 
   const items = cart?.items ?? []
   const total = cart?.total ?? 0
+  const itemCount = getCartTotalQuantity(cart)
 
   const handleRemove = async (itemId) => {
     if (!onRemove) return
@@ -42,7 +44,7 @@ export default function CartDrawer({ open, onClose, cart, currency, onRemove, on
         <div className="flex items-center justify-between border-b border-store bg-store-primary-muted px-6 py-5">
           <div>
             <h2 className="text-lg font-bold text-store-heading">Shopping cart</h2>
-            <p className="text-xs text-store-muted">{items.length} item{items.length === 1 ? '' : 's'}</p>
+            <p className="text-xs text-store-muted">{itemCount} item{itemCount === 1 ? '' : 's'}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 hover:bg-store-hover transition-colors" aria-label="Close">
             <X size={20} />

@@ -11,6 +11,7 @@ import {
 import { prefetchStaticCatalog } from '../lib/products'
 import { detectRegionFromBrowser, readStoredRegion } from '../lib/region'
 import { applyTheme, getInitialTheme, persistTheme } from '../lib/theme'
+import { getCartItemProductId, getCartItemVariantId, normalizeProductId } from '../lib/cartHelpers'
 
 const AppContext = createContext(null)
 
@@ -207,20 +208,45 @@ export function AppProvider({ children }) {
     setUser(null)
   }, [])
 
-  const addToCart = async (productId, variantId, quantity = 1) => {
-    await api('/api/cart/items', {
-      method: 'POST',
-      body: JSON.stringify({ productId, variantId, quantity }),
+  const addToCart = useCallback(async (productId, variantId, quantity = 1) => {
+    const pid = normalizeProductId(productId)
+    if (!pid) throw new Error('Product not found')
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1))
+    const vid = variantId == null || variantId === '' ? null : String(variantId)
+
+    setCart((prev) => {
+      if (!prev?.items) return prev
+      const items = [...prev.items]
+      const index = items.findIndex((item) => {
+        if (getCartItemProductId(item) !== pid) return false
+        return getCartItemVariantId(item) === (vid ?? '')
+      })
+      if (index >= 0) {
+        const current = items[index]
+        items[index] = { ...current, quantity: (Number(current.quantity) || 0) + qty }
+      } else {
+        items.unshift({ id: `pending-${pid}-${vid ?? 'default'}`, productId: pid, variantId: vid, quantity: qty, product: { id: pid } })
+      }
+      return { ...prev, items }
     })
-    // Logged-in shoppers: attach email so abandoned-cart reminders can fire if they leave
-    if (user?.email) {
-      await api('/api/cart', {
-        method: 'PATCH',
-        body: JSON.stringify({ email: user.email, countryCode: country }),
-      }).catch(() => {})
+
+    try {
+      await api('/api/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({ productId: pid, variantId: vid ?? undefined, quantity: qty }),
+      })
+      if (user?.email) {
+        await api('/api/cart', {
+          method: 'PATCH',
+          body: JSON.stringify({ email: user.email, countryCode: country }),
+        }).catch(() => {})
+      }
+      await refreshCart()
+    } catch (err) {
+      await refreshCart().catch(() => {})
+      throw err
     }
-    await refreshCart()
-  }
+  }, [country, refreshCart, user?.email])
 
   const removeFromCart = useCallback(async (itemId) => {
     await api(`/api/cart/items/${itemId}`, { method: 'DELETE' })
@@ -262,7 +288,7 @@ export function AppProvider({ children }) {
     [
       user, authReady, config, cart, country, currency, locale,
       theme, setTheme, toggleTheme, refreshCart, removeFromCart, updateCartItemQuantity,
-      login, loginWithGoogle, loginWithFacebook, loginWithSocial, signup, logout,
+      login, loginWithGoogle, loginWithFacebook, loginWithSocial, signup, logout, addToCart,
     ],
   )
 

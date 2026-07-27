@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Heart, Package, ShoppingCart, ZoomIn } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Heart, LoaderCircle, Package, ShoppingCart, ZoomIn } from 'lucide-react'
 import { api, formatPrice, trackPage, discountPercent, soldRecentlyCount, formatSoldRecently } from '../lib/api'
+import { getCartQuantityForProduct, defaultVariantId } from '../lib/cartHelpers'
 import { MAILTO_URL, SUPPORT_EMAIL, SUPPORT_PHONE_DISPLAY, WHATSAPP_URL } from '../lib/contact'
 import { findProductBySlug, getInstantProducts, loadProducts } from '../lib/products'
 import { getSimilarProducts } from '../lib/similarProducts'
@@ -43,16 +44,14 @@ function resolveShippingBullets(product) {
   return DEFAULT_SHIPPING_BULLETS
 }
 
-function defaultVariantId(product) {
-  if (!product?.variants?.length) return null
-  const def = product.variants.find((v) => v.isDefault) ?? product.variants[0]
-  return def?.id ?? null
-}
-
 export default function ProductPage() {
   const { slug } = useParams()
+  return <ProductPageContent key={slug} slug={slug} />
+}
+
+function ProductPageContent({ slug }) {
   const navigate = useNavigate()
-  const { addToCart, currency, country, locale, config } = useApp()
+  const { addToCart, cart, currency, country, locale, config } = useApp()
   const [data, setData] = useState(() => {
     const product = findProductBySlug(slug)
     return product ? { product, videos: [] } : null
@@ -62,15 +61,11 @@ export default function ProductPage() {
   const [quantity, setQuantity] = useState(1)
   const [tab, setTab] = useState('description')
   const [zoomed, setZoomed] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
     trackPage(`/product/${slug}`)
-    const cached = findProductBySlug(slug)
-    if (cached) {
-      setData({ product: cached, videos: [] })
-      setVariantId(defaultVariantId(cached))
-    }
-    setQuantity(1)
 
     let cancelled = false
     loadProducts({ country, currency, locale }, (products) => {
@@ -86,7 +81,10 @@ export default function ProductPage() {
         }
       })
       .catch(() => {
-        if (!cancelled && cached) setData({ product: cached, videos: [] })
+        if (!cancelled) {
+          const fallback = findProductBySlug(slug)
+          if (fallback) setData({ product: fallback, videos: [] })
+        }
       })
 
     return () => { cancelled = true }
@@ -117,6 +115,10 @@ export default function ProductPage() {
     () => priceWithVolumeDiscount(basePrice, quantity, volumeTiers),
     [basePrice, quantity, volumeTiers],
   )
+  const cartQuantity = useMemo(
+    () => getCartQuantityForProduct(cart, product?.id, variantId),
+    [cart, product?.id, variantId],
+  )
 
   if (!product) {
     return (
@@ -140,7 +142,13 @@ export default function ProductPage() {
   }
 
   const addWithQty = async () => {
-    await addToCart(product.id, variantId, quantity)
+    if (adding) return
+    setAdding(true)
+    try {
+      await addToCart(product.id, variantId, quantity)
+    } finally {
+      setAdding(false)
+    }
   }
 
   const watchers = 20 + (soldRecentlyCount(product) % 80)
@@ -182,8 +190,8 @@ export default function ProductPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
-          <div>
+        <div className="product-hero grid gap-6 lg:grid-cols-2 lg:items-start lg:gap-10">
+          <div className="product-hero-media lg:sticky lg:top-24">
             <button
               type="button"
               onClick={() => setZoomed(!zoomed)}
@@ -208,7 +216,7 @@ export default function ProductPage() {
             </button>
           </div>
 
-          <div>
+          <div className="product-purchase-panel store-card p-5 sm:p-6 lg:sticky lg:top-24">
             <p className="text-xs font-bold uppercase tracking-wider text-store-muted">
               {isBundle ? 'Bundle deal' : product.category}
             </p>
@@ -224,8 +232,135 @@ export default function ProductPage() {
               </p>
             ) : null}
 
+            <ProductRatingBadge product={product} className="mt-3" />
+
+            {!product.hidePrice ? (
+              <div className="mt-4 flex flex-wrap items-baseline gap-3">
+                <p className="text-3xl font-extrabold text-[#f97316]">{formatPrice(price, product.currency ?? currency)}</p>
+                {volumePricing.volumeDiscountPercent > 0 ? (
+                  <p className="text-lg text-store-muted line-through">
+                    {formatPrice(volumePricing.listUnitPrice, product.currency ?? currency)}
+                  </p>
+                ) : compareAt && compareAt > price ? (
+                  <p className="text-lg text-store-muted line-through">{formatPrice(compareAt, product.currency ?? currency)}</p>
+                ) : null}
+                {volumePricing.volumeDiscountPercent > 0 ? (
+                  <span className="rounded-full bg-[#ecfdf5] px-2.5 py-0.5 text-xs font-bold text-[#059669]">
+                    -{volumePricing.volumeDiscountPercent}% volume
+                  </span>
+                ) : discount > 0 ? (
+                  <span className="rounded-full bg-[#fee2e2] px-2.5 py-0.5 text-xs font-bold text-[#e11d48]">-{discount}% OFF</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="rounded-full bg-store-primary-muted px-3 py-1 text-xs font-semibold text-[#ea580c]">{soldRecently} sold recently</span>
+              <span className="rounded-full bg-[#ecfdf5] px-3 py-1 text-xs font-semibold text-[#059669] dark:bg-[#064e3b] dark:text-[#4ade80]">{displayStock} in stock</span>
+              <span className="rounded-full bg-[#fef2f2] px-3 py-1 text-xs font-semibold text-[#e11d48] dark:bg-[#450a0a] dark:text-[#fca5a5]">{watchers} watching now</span>
+            </div>
+
+            <VariantPicker
+              variants={product.variants}
+              selectedId={variantId}
+              onSelect={setVariantId}
+              currency={product.currency ?? currency}
+              hidePrice={product.hidePrice}
+              label={product.category?.toLowerCase().includes('windows') ? 'Edition' : 'Option'}
+            />
+
+            <div className="mt-5">
+              <p className="mb-2 text-sm font-semibold text-store-heading">Quantity</p>
+              <div className="inline-flex items-center overflow-hidden rounded-full border border-store">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  className="px-3 py-2 text-store-heading hover:bg-store-hover"
+                  aria-label="Decrease quantity"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={9999}
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
+                  className="w-16 border-x border-store bg-transparent py-2 text-center text-sm font-semibold outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.min(9999, q + 1))}
+                  className="px-3 py-2 text-store-heading hover:bg-store-hover"
+                  aria-label="Increase quantity"
+                >
+                  +
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-store-muted">
+                Line total {formatPrice(price * quantity, product.currency ?? currency)}
+                {volumePricing.volumeDiscountPercent
+                  ? ` · ${volumePricing.volumeDiscountPercent}% volume discount applied`
+                  : null}
+              </p>
+            </div>
+
+            <div className="product-purchase-actions mt-6 hidden gap-3 lg:flex">
+              {!product.hideCart ? (
+                <button type="button" onClick={addWithQty} disabled={adding} className="btn-store-primary min-h-[48px] flex-1 disabled:opacity-70">
+                  {adding ? <LoaderCircle size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+                  Add to cart
+                  {cartQuantity > 0 ? (
+                    <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                      {cartQuantity > 99 ? '99+' : cartQuantity}
+                    </span>
+                  ) : null}
+                </button>
+              ) : null}
+              <button type="button" onClick={buyNow} className="btn-store-secondary min-h-[48px] flex-1">
+                Buy now
+              </button>
+              <button type="button" className="btn-store-outline min-h-[48px] shrink-0 px-4" aria-label="Add to wishlist">
+                <Heart size={16} />
+              </button>
+            </div>
+
+            <div className="mt-4 hidden lg:block">
+              <TrustBadge placement="product" />
+            </div>
+
+            {!product.hidePrice ? (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-store">
+                <div className="bg-store-subtle px-4 py-2 text-xs font-bold uppercase tracking-wide text-store-muted">
+                  Volume pricing (auto-applied)
+                </div>
+                <ul className="divide-y divide-[var(--store-border)] text-sm">
+                  {volumeTiers.map((tier) => {
+                    const active = activeVolumeTierMinQty(quantity, volumeTiers) === tier.minQty
+                    const tierPrice = priceWithVolumeDiscount(basePrice, tier.minQty, volumeTiers).unitPrice
+                    return (
+                      <li
+                        key={tier.minQty}
+                        className={`flex items-center justify-between gap-3 px-4 py-2.5 ${active ? 'bg-store-primary-muted/50 font-semibold text-[#ea580c]' : 'text-store-body'}`}
+                      >
+                        <span>{tier.label}</span>
+                        <span>
+                          {tier.discountPercent ? `−${tier.discountPercent}% · ` : ''}
+                          {formatPrice(tierPrice, product.currency ?? currency)}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {featureBullets.length || (isBundle && bundleContents.length) ? (
+          <div className="mt-6 space-y-4 lg:mt-8">
             {featureBullets.length ? (
-              <ul className="product-desc-list product-desc-list--bullets mt-4">
+              <ul className="product-desc-list product-desc-list--bullets store-card p-5 sm:p-6">
                 {featureBullets.map((bullet, index) => (
                   <li key={`feature-${index}`}>{bullet}</li>
                 ))}
@@ -233,7 +368,7 @@ export default function ProductPage() {
             ) : null}
 
             {isBundle && bundleContents.length ? (
-              <div className="mt-4 rounded-2xl border border-store bg-store-hover/60 p-4">
+              <div className="store-card p-5 sm:p-6">
                 <p className="inline-flex items-center gap-2 text-sm font-bold text-store-heading">
                   <Package size={16} className="text-[#7c3aed]" /> What’s included
                 </p>
@@ -272,124 +407,8 @@ export default function ProductPage() {
                 ) : null}
               </div>
             ) : null}
-
-            <ProductRatingBadge product={product} className="mt-3" />
-
-            {!product.hidePrice ? (
-              <div className="mt-4 flex flex-wrap items-baseline gap-3">
-                <p className="text-3xl font-extrabold text-[#f97316]">{formatPrice(price, product.currency ?? currency)}</p>
-                {volumePricing.volumeDiscountPercent > 0 ? (
-                  <p className="text-lg text-store-muted line-through">
-                    {formatPrice(volumePricing.listUnitPrice, product.currency ?? currency)}
-                  </p>
-                ) : compareAt && compareAt > price ? (
-                  <p className="text-lg text-store-muted line-through">{formatPrice(compareAt, product.currency ?? currency)}</p>
-                ) : null}
-                {volumePricing.volumeDiscountPercent > 0 ? (
-                  <span className="rounded-full bg-[#ecfdf5] px-2.5 py-0.5 text-xs font-bold text-[#059669]">
-                    -{volumePricing.volumeDiscountPercent}% volume
-                  </span>
-                ) : discount > 0 ? (
-                  <span className="rounded-full bg-[#fee2e2] px-2.5 py-0.5 text-xs font-bold text-[#e11d48]">-{discount}% OFF</span>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <span className="rounded-full bg-store-primary-muted px-3 py-1 text-xs font-semibold text-[#ea580c]">{soldRecently} sold recently</span>
-              <span className="rounded-full bg-[#ecfdf5] px-3 py-1 text-xs font-semibold text-[#059669] dark:bg-[#064e3b] dark:text-[#4ade80]">{displayStock} in stock</span>
-              <span className="rounded-full bg-[#fef2f2] px-3 py-1 text-xs font-semibold text-[#e11d48] dark:bg-[#450a0a] dark:text-[#fca5a5]">{watchers} watching now</span>
-            </div>
-
-            <VariantPicker
-              variants={product.variants}
-              selectedId={variantId}
-              onSelect={setVariantId}
-              currency={product.currency ?? currency}
-              hidePrice={product.hidePrice}
-              label={product.category?.toLowerCase().includes('windows') ? 'Edition' : 'Option'}
-            />
-
-            <div className="mt-6">
-              <p className="mb-2 text-sm font-semibold text-store-heading">Quantity</p>
-              <div className="inline-flex items-center overflow-hidden rounded-full border border-store">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="px-3 py-2 text-store-heading hover:bg-store-hover"
-                  aria-label="Decrease quantity"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  max={9999}
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, Math.min(9999, Number(e.target.value) || 1)))}
-                  className="w-16 border-x border-store bg-transparent py-2 text-center text-sm font-semibold outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.min(9999, q + 1))}
-                  className="px-3 py-2 text-store-heading hover:bg-store-hover"
-                  aria-label="Increase quantity"
-                >
-                  +
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-store-muted">
-                Line total {formatPrice(price * quantity, product.currency ?? currency)}
-                {volumePricing.volumeDiscountPercent
-                  ? ` · ${volumePricing.volumeDiscountPercent}% volume discount applied`
-                  : null}
-              </p>
-            </div>
-
-            {!product.hidePrice ? (
-              <div className="mt-5 overflow-hidden rounded-2xl border border-store">
-                <div className="bg-store-subtle px-4 py-2 text-xs font-bold uppercase tracking-wide text-store-muted">
-                  Volume pricing (auto-applied)
-                </div>
-                <ul className="divide-y divide-[var(--store-border)] text-sm">
-                  {volumeTiers.map((tier) => {
-                    const active = activeVolumeTierMinQty(quantity, volumeTiers) === tier.minQty
-                    const tierPrice = priceWithVolumeDiscount(basePrice, tier.minQty, volumeTiers).unitPrice
-                    return (
-                      <li
-                        key={tier.minQty}
-                        className={`flex items-center justify-between gap-3 px-4 py-2.5 ${active ? 'bg-store-primary-muted/50 font-semibold text-[#ea580c]' : 'text-store-body'}`}
-                      >
-                        <span>{tier.label}</span>
-                        <span>
-                          {tier.discountPercent ? `−${tier.discountPercent}% · ` : ''}
-                          {formatPrice(tierPrice, product.currency ?? currency)}
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            ) : null}
-
-            <div className="mt-8 hidden flex-wrap gap-3 lg:flex">
-              {!product.hideCart ? (
-                <button type="button" onClick={addWithQty} className="btn-store-primary min-w-[140px]">
-                  <ShoppingCart size={18} /> Add to cart
-                </button>
-              ) : null}
-              <button type="button" onClick={buyNow} className="btn-store-secondary min-w-[140px]">
-                Buy now
-              </button>
-              <button type="button" className="btn-store-outline" aria-label="Add to wishlist">
-                <Heart size={16} />
-              </button>
-            </div>
-            <div className="mt-3 hidden lg:block">
-              <TrustBadge placement="product" />
-            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="mt-8 store-card p-4 sm:mt-12 sm:p-6">
           <div className="category-scroll border-b border-store pb-1">
@@ -480,7 +499,7 @@ export default function ProductPage() {
                   product={p}
                   currency={currency}
                   compact
-                  onAddToCart={(item) => addToCart(item.id, item.variants?.[0]?.id)}
+                  onAddToCart={(item) => addToCart(item.id ?? item._id, defaultVariantId(item))}
                 />
               ))}
             </div>
@@ -504,10 +523,16 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={addWithQty}
-                className="btn-store-outline min-h-[44px] shrink-0 px-4"
-                aria-label="Add to cart"
+                disabled={adding}
+                className="btn-store-outline relative min-h-[44px] shrink-0 px-4 disabled:opacity-70"
+                aria-label={cartQuantity > 0 ? `Add to cart, ${cartQuantity} in cart` : 'Add to cart'}
               >
-                <ShoppingCart size={18} />
+                {adding ? <LoaderCircle size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+                {cartQuantity > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#f97316] px-1 text-[10px] font-bold text-white">
+                    {cartQuantity > 9 ? '9+' : cartQuantity}
+                  </span>
+                ) : null}
               </button>
             ) : null}
             <button type="button" onClick={buyNow} className="btn-store-primary min-h-[44px] shrink-0 px-5">

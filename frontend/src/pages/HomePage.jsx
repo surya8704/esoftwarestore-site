@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Grid2x2, Grid3x3, LayoutGrid, Shield, Sparkles, Zap } from 'lucide-react'
 import { trackPage } from '../lib/api'
+import { defaultVariantId } from '../lib/cartHelpers'
 import { getInstantProducts, loadProducts } from '../lib/products'
 import { sortByDefaultCatalogOrder } from '../lib/catalogSort'
 import { searchProducts } from '../lib/productSearch'
@@ -116,7 +117,7 @@ export default function HomePage() {
       : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3'
 
   const handleAdd = async (product) => {
-    await addToCart(product.id, product.variants?.[0]?.id)
+    await addToCart(product.id ?? product._id, defaultVariantId(product))
   }
 
   const setCategory = (cat) => {

@@ -307,6 +307,24 @@ body {
   box-shadow: 0 -6px 20px rgba(15, 23, 42, 0.1);
 }
 
+.product-purchase-panel {
+  border-color: color-mix(in srgb, var(--store-primary) 18%, var(--store-border));
+  box-shadow: var(--store-shadow), 0 0 0 1px color-mix(in srgb, var(--store-primary) 6%, transparent);
+}
+
+.product-purchase-actions .btn-store-primary,
+.product-purchase-actions .btn-store-secondary {
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+@media (min-width: 1024px) {
+  .product-hero-media,
+  .product-purchase-panel {
+    align-self: start;
+  }
+}
+
 @media (min-width: 1024px) {
   .product-sticky-bar {
     display: none;

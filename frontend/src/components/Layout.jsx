@@ -12,7 +12,7 @@ import {
 } from '../lib/contact'
 import { useApp } from '../context/AppContext'
 import CartDrawer from './CartDrawer'
-import ThemeToggle from './ThemeToggle'
+import { getCartTotalQuantity } from '../lib/cartHelpers'
 import ChatWidget from './ChatWidget'
 import MobileBottomNav from './MobileBottomNav'
 import StoreLogo from './StoreLogo'
@@ -45,7 +45,7 @@ export default function Layout({ children }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const isAdmin = location.pathname.startsWith('/admin')
-  const itemCount = cart?.items?.length ?? 0
+  const itemCount = getCartTotalQuantity(cart)
   const activeCategory = searchParams.get('category')
   const activeQuery = searchParams.get('q') ?? ''
   const isShopHome = location.pathname === '/' && !activeCategory && !activeQuery

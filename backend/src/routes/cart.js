@@ -29,6 +29,7 @@ export async function cartRoutes(app) {
         })
         return {
           ...mapId(item),
+          productId: item.productId?.toString?.() ?? item.productId,
           product: product
             ? {
                 id: product._id.toString(),

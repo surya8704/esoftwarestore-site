@@ -1,11 +1,21 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Package, ShoppingCart, Star, X } from 'lucide-react'
+import { LoaderCircle, Package, ShoppingCart, Star, X } from 'lucide-react'
 import { formatPrice, discountPercent } from '../lib/api'
+import { getCartQuantityForProduct } from '../lib/cartHelpers'
 import { reviewCountForProduct } from '../lib/reviews'
+import { useApp } from '../context/AppContext'
 import ProductImage from './ProductImage'
 import { splitDescriptionParts } from './ProductDescription'
 
 export default function QuickViewModal({ product, currency, onClose, onAddToCart }) {
+  const { cart } = useApp()
+  const [adding, setAdding] = useState(false)
+  const cartQuantity = useMemo(
+    () => getCartQuantityForProduct(cart, product?.id),
+    [cart, product?.id],
+  )
+
   if (!product) return null
 
   const price = product.displayPrice ?? product.price
@@ -82,8 +92,27 @@ export default function QuickViewModal({ product, currency, onClose, onAddToCart
             ) : null}
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <button type="button" onClick={() => onAddToCart(product)} className="btn-store-primary">
-                <ShoppingCart size={16} /> Add to cart
+              <button
+                type="button"
+                disabled={adding}
+                onClick={async () => {
+                  if (!onAddToCart || adding) return
+                  setAdding(true)
+                  try {
+                    await onAddToCart(product)
+                  } finally {
+                    setAdding(false)
+                  }
+                }}
+                className="btn-store-primary disabled:opacity-70"
+              >
+                {adding ? <LoaderCircle size={16} className="animate-spin" /> : <ShoppingCart size={16} />}
+                Add to cart
+                {cartQuantity > 0 ? (
+                  <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                    {cartQuantity > 99 ? '99+' : cartQuantity}
+                  </span>
+                ) : null}
               </button>
               <Link to={`/product/${product.slug}`} onClick={onClose} className="btn-store-secondary">
                 View details

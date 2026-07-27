@@ -12,6 +12,7 @@ import {
   Megaphone,
   MessageSquareQuote,
   Package,
+  Plus,
   Receipt,
   ShoppingBag,
   BadgeCheck,
@@ -47,6 +48,7 @@ const ADMIN_TABS = [
   { id: 'reports', label: 'Reports', icon: ChartColumn },
   { id: 'vendors', label: 'Vendors', icon: Building2 },
   { id: 'products', label: 'Products', icon: Package },
+  { id: 'products-new', label: 'Add product', icon: Plus },
   { id: 'regions', label: 'Regions', icon: Globe2 },
   { id: 'reviews', label: 'Reviews', icon: MessageSquareQuote },
   { id: 'trust-badge', label: 'Trust Badge', icon: BadgeCheck },
@@ -64,6 +66,7 @@ const ADMIN_TABS = [
 const VENDOR_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, permission: null },
   { id: 'products', label: 'My Products', icon: Package, permission: 'canManageProducts' },
+  { id: 'products-new', label: 'Add product', icon: Plus, permission: 'canManageProducts', requiresCreate: true },
   { id: 'orders', label: 'My Orders', icon: Receipt, permission: 'canViewOrders' },
   { id: 'payouts', label: 'Payouts', icon: Wallet, permission: 'canManagePayouts' },
 ]
@@ -73,15 +76,24 @@ export default function AdminDashboard() {
   const [user, setUser] = useState(null)
   const [vendorPermissions, setVendorPermissions] = useState(() => defaultVendorPermissions())
   const [tab, setTab] = useState('overview')
+  const [productEditId, setProductEditId] = useState(null)
+  const [productHighlightId, setProductHighlightId] = useState(null)
+  const [productStatusMessage, setProductStatusMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [authForm, setAuthForm] = useState({ email: '', password: '' })
 
   const isAdmin = user?.role === 'admin'
   const isVendor = user?.role === 'vendor'
+  const vendorCanCreateProducts = isAdmin || (vendorPermissions.canManageProducts && vendorPermissions.canEditPrices)
   const tabs = isAdmin
     ? ADMIN_TABS
-    : VENDOR_TABS.filter((item) => !item.permission || vendorPermissions[item.permission])
+    : VENDOR_TABS.filter((item) => {
+        if (item.permission && !vendorPermissions[item.permission]) return false
+        if (item.requiresCreate && !vendorCanCreateProducts) return false
+        return true
+      })
+  const sidebarActiveTab = tab === 'products-edit' ? 'products' : tab
 
   useEffect(() => {
     if (!token) return
@@ -124,10 +136,48 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!isVendor) return
-    if (!tabs.some((item) => item.id === tab)) {
+    if (!tabs.some((item) => item.id === tab) && tab !== 'products-edit') {
       setTab('overview')
     }
   }, [isVendor, tabs, tab])
+
+  const openProductList = () => {
+    setProductEditId(null)
+    setTab('products')
+  }
+
+  const openProductForm = ({ editId = null } = {}) => {
+    setProductEditId(editId)
+    setTab(editId ? 'products-edit' : 'products-new')
+  }
+
+  const handleProductNavigate = (view, options = {}) => {
+    if (view === 'list') {
+      openProductList()
+      if (options.highlightProductId) setProductHighlightId(options.highlightProductId)
+      if (options.statusMessage) setProductStatusMessage(options.statusMessage)
+      return
+    }
+    if (view === 'form') {
+      openProductForm({ editId: options.editId ?? null })
+    }
+  }
+
+  const handleSidebarClick = (id) => {
+    if (id === 'products') {
+      setProductHighlightId(null)
+      setProductStatusMessage('')
+      openProductList()
+      return
+    }
+    if (id === 'products-new') {
+      setProductHighlightId(null)
+      setProductStatusMessage('')
+      openProductForm({ editId: null })
+      return
+    }
+    setTab(id)
+  }
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -228,9 +278,9 @@ export default function AdminDashboard() {
             <button
               key={id}
               type="button"
-              onClick={() => setTab(id)}
+              onClick={() => handleSidebarClick(id)}
               className={`flex shrink-0 items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold ${
-                tab === id
+                sidebarActiveTab === id
                   ? 'bg-sky-600 text-white'
                   : 'border border-slate-200 text-slate-600 dark:border-white/10 dark:text-slate-300'
               }`}
@@ -244,12 +294,21 @@ export default function AdminDashboard() {
           {tab === 'overview' ? <OverviewTab isAdmin={isAdmin} formatMoney={formatMoney} onNavigate={setTab} /> : null}
           {tab === 'reports' && isAdmin ? <ReportsTab /> : null}
           {tab === 'vendors' && isAdmin ? <VendorsTab emptyVendorForm={emptyVendorForm} formatMoney={formatMoney} /> : null}
-          {tab === 'products' ? (
+          {tab === 'products' || tab === 'products-new' || tab === 'products-edit' ? (
             <ProductsTab
               isAdmin={isAdmin}
               emptyProductForm={emptyProductForm}
               formatMoney={formatMoney}
               vendorPermissions={vendorPermissions}
+              view={tab === 'products' ? 'list' : 'form'}
+              editId={tab === 'products-edit' ? productEditId : null}
+              highlightProductId={productHighlightId}
+              statusMessage={productStatusMessage}
+              onStatusClear={() => {
+                setProductHighlightId(null)
+                setProductStatusMessage('')
+              }}
+              onNavigate={handleProductNavigate}
             />
           ) : null}
           {tab === 'regions' && isAdmin ? <RegionsTab /> : null}
