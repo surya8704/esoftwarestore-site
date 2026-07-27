@@ -16,6 +16,7 @@ import { getCartTotalQuantity } from '../lib/cartHelpers'
 import ChatWidget from './ChatWidget'
 import MobileBottomNav from './MobileBottomNav'
 import StoreLogo from './StoreLogo'
+import ThemeToggle from './ThemeToggle'
 import AnnouncementMarquee from './AnnouncementMarquee'
 import SearchSuggest from './SearchSuggest'
 
