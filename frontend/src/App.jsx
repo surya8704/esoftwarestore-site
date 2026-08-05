@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
+import { trackGaPageView } from './lib/analytics'
 import { trackPage } from './lib/api'
 import HomePage from './pages/HomePage'
 import ProductPage from './pages/ProductPage'
@@ -21,8 +22,14 @@ import AdminPage from './pages/AdminPage'
 function PageTracker() {
   const location = useLocation()
   useEffect(() => {
+    const path = `${location.pathname}${location.search}`
     if (location.pathname !== '/') trackPage(location.pathname)
-  }, [location.pathname])
+    // Defer so document.title from SEO components has updated
+    const timer = window.setTimeout(() => {
+      trackGaPageView(path)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [location.pathname, location.search])
   return null
 }
 
