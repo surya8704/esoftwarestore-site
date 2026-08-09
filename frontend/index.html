@@ -102,13 +102,14 @@
       fbq('init', '881868088016592');
       /* PageView is sent from the SPA router so every route is tracked once */
     </script>
-    <noscript><img height="1" width="1" style="display:none"
-      src="https://www.facebook.com/tr?id=881868088016592&ev=PageView&noscript=1"
-      alt="" /></noscript>
     <!-- End Meta Pixel Code -->
     <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
   </head>
   <body>
+    <!-- Meta Pixel noscript (must be in body, not head) -->
+    <noscript><img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=881868088016592&ev=PageView&noscript=1"
+      alt="" /></noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
