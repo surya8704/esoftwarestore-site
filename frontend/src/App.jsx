@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import { trackGaPageView, trackMetaPageView } from './lib/analytics'
@@ -21,16 +21,27 @@ import AdminPage from './pages/AdminPage'
 
 function PageTracker() {
   const location = useLocation()
+  const isFirstLoad = useRef(true)
+
   useEffect(() => {
     const path = `${location.pathname}${location.search}`
     if (location.pathname !== '/') trackPage(location.pathname)
-    // Defer so document.title from SEO components has updated
-    const timer = window.setTimeout(() => {
-      trackGaPageView(path)
+
+    // First paint page_view is sent by the gtag config in index.html.
+    // Meta Pixel still needs an explicit PageView on first load.
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false
       trackMetaPageView(path)
-    }, 0)
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => {
+      trackGaPageView(path, document.title)
+      trackMetaPageView(path)
+    }, 50)
     return () => window.clearTimeout(timer)
   }, [location.pathname, location.search])
+
   return null
 }
 

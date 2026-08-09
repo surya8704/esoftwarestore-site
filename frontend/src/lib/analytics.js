@@ -1,8 +1,15 @@
 const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-C1PR89EVBK'
 const META_PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID || '881868088016592'
 
-function getGtag() {
-  return typeof window !== 'undefined' && typeof window.gtag === 'function' ? window.gtag : null
+function ensureGtag() {
+  if (typeof window === 'undefined') return null
+  window.dataLayer = window.dataLayer || []
+  if (typeof window.gtag !== 'function') {
+    window.gtag = function gtag() {
+      window.dataLayer.push(arguments)
+    }
+  }
+  return window.gtag
 }
 
 function getFbq() {
@@ -13,18 +20,34 @@ function isAdminPath(path) {
   return String(path || '').startsWith('/admin')
 }
 
-/** Send a GA4 page_view for SPA route changes. Skips admin dashboard. */
+/**
+ * Track a GA4 page view for SPA route changes.
+ * Uses gtag config (recommended for SPAs) plus an explicit page_view event.
+ * Skips /admin. First page load is also sent by the index.html gtag config.
+ */
 export function trackGaPageView(path, title = document.title) {
-  const gtag = getGtag()
+  const gtag = ensureGtag()
   if (!gtag || !GA_MEASUREMENT_ID) return
 
   const pagePath = path || `${window.location.pathname}${window.location.search}`
   if (isAdminPath(pagePath)) return
 
+  const pageLocation = `${window.location.origin}${pagePath}`
+  const pageTitle = title || document.title
+
+  // Update the active config with the virtual page path (SPA-friendly)
+  gtag('config', GA_MEASUREMENT_ID, {
+    page_path: pagePath,
+    page_title: pageTitle,
+    page_location: pageLocation,
+    send_page_view: false,
+  })
+
+  // Explicit page_view so Realtime / DebugView always show navigations
   gtag('event', 'page_view', {
     page_path: pagePath,
-    page_title: title,
-    page_location: `${window.location.origin}${pagePath}`,
+    page_title: pageTitle,
+    page_location: pageLocation,
     send_to: GA_MEASUREMENT_ID,
   })
 }
@@ -41,7 +64,7 @@ export function trackMetaPageView(path) {
 }
 
 export function trackGaEvent(eventName, params = {}) {
-  const gtag = getGtag()
+  const gtag = ensureGtag()
   if (!gtag || !GA_MEASUREMENT_ID) return
   if (isAdminPath(window.location.pathname)) return
   gtag('event', eventName, { ...params, send_to: GA_MEASUREMENT_ID })
