@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
-import { trackGaPageView, trackMetaPageView } from './lib/analytics'
+import { trackGtmPageView, trackMetaPageView } from './lib/analytics'
 import { trackPage } from './lib/api'
 import HomePage from './pages/HomePage'
 import ProductPage from './pages/ProductPage'
@@ -27,8 +27,7 @@ function PageTracker() {
     const path = `${location.pathname}${location.search}`
     if (location.pathname !== '/') trackPage(location.pathname)
 
-    // First paint page_view is sent by the gtag config in index.html.
-    // Meta Pixel still needs an explicit PageView on first load.
+    // First paint is handled by GTM container load + Meta still needs PageView.
     if (isFirstLoad.current) {
       isFirstLoad.current = false
       trackMetaPageView(path)
@@ -36,7 +35,7 @@ function PageTracker() {
     }
 
     const timer = window.setTimeout(() => {
-      trackGaPageView(path, document.title)
+      trackGtmPageView(path, document.title)
       trackMetaPageView(path)
     }, 50)
     return () => window.clearTimeout(timer)
