@@ -1,4 +1,12 @@
 {
+  "redirects": [
+    {
+      "source": "/:path((?!\\.well-known/).*)",
+      "has": [{ "type": "host", "value": "esoftwarestore.com" }],
+      "destination": "https://www.esoftwarestore.com/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!assets/|\\.well-known/).*)",
