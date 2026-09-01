@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/meta-catalog.js": {
+      "includeFiles": "api/meta-product-catalog.csv"
+    }
+  },
   "redirects": [
     {
       "source": "/:path((?!\\.well-known/).*)",
@@ -11,6 +16,10 @@
     {
       "source": "/.well-known/apple-developer-merchantid-domain-association",
       "destination": "/api/apple-domain"
+    },
+    {
+      "source": "/meta-product-catalog.csv",
+      "destination": "/api/meta-catalog"
     },
     {
       "source": "/((?!assets/|\\.well-known/|meta-product-catalog\\.csv).*)",

@@ -49,6 +49,12 @@ const csv = buildMetaCatalogCsv(products, variantsByProductId, {
 fs.mkdirSync(path.dirname(outPath), { recursive: true })
 fs.writeFileSync(outPath, csv, 'utf8')
 
+const frontendPublic = path.resolve(__dirname, '../../frontend/public/meta-product-catalog.csv')
+const frontendApi = path.resolve(__dirname, '../../frontend/api/meta-product-catalog.csv')
+fs.mkdirSync(path.dirname(frontendPublic), { recursive: true })
+fs.writeFileSync(frontendPublic, csv, 'utf8')
+fs.writeFileSync(frontendApi, csv, 'utf8')
+
 const rowCount = csv.trim().split('\n').length - 1
 console.log(`Exported ${rowCount} catalog rows (${products.length} products) to ${outPath}`)
 console.log(`Currency: ${currency}`)
