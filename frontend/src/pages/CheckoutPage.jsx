@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, formatPrice, trackPage } from '../lib/api'
+import { trackMetaInitiateCheckout } from '../lib/analytics'
 import { CHECKOUT_COUNTRIES, emptyBilling, INDIAN_STATES } from '../lib/billing'
 import { getDialCodeForCountry, isValidLocalPhone } from '../lib/phone'
 import { submitPayuForm } from '../lib/payu'
@@ -38,6 +39,7 @@ export default function CheckoutPage() {
   const [delivery, setDelivery] = useState(null)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const checkoutTracked = useRef(false)
 
   const availablePaymentMethods = useMemo(() => {
     const countryCode = billing.countryCode || country || 'IN'
@@ -84,6 +86,12 @@ export default function CheckoutPage() {
     trackPage('/checkout')
     refreshCart()
   }, [refreshCart])
+
+  useEffect(() => {
+    if (checkoutTracked.current || !cart?.items?.length) return
+    checkoutTracked.current = true
+    trackMetaInitiateCheckout(cart, currency)
+  }, [cart, currency])
 
   useEffect(() => {
     setBilling((prev) => ({

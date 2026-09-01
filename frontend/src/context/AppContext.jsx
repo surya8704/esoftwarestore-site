@@ -12,6 +12,7 @@ import { prefetchStaticCatalog } from '../lib/products'
 import { detectRegionFromBrowser, readStoredRegion } from '../lib/region'
 import { applyTheme, getInitialTheme, persistTheme } from '../lib/theme'
 import { getCartItemProductId, getCartItemVariantId, normalizeProductId } from '../lib/cartHelpers'
+import { trackMetaAddToCart } from '../lib/analytics'
 
 const AppContext = createContext(null)
 
@@ -53,6 +54,7 @@ export function AppProvider({ children }) {
   const refreshCart = useCallback(async () => {
     const data = await api('/api/cart')
     setCart(data.cart)
+    return data.cart
   }, [])
 
   const applyDetectedRegion = useCallback(async (region) => {
@@ -241,12 +243,25 @@ export function AppProvider({ children }) {
           body: JSON.stringify({ email: user.email, countryCode: country }),
         }).catch(() => {})
       }
-      await refreshCart()
+      const updatedCart = await refreshCart()
+      const addedItem = updatedCart?.items?.find((item) => {
+        if (getCartItemProductId(item) !== pid) return false
+        return getCartItemVariantId(item) === (vid ?? '')
+      })
+      if (addedItem) {
+        trackMetaAddToCart({
+          productId: pid,
+          productName: addedItem.product?.name,
+          unitPrice: addedItem.unitPrice,
+          quantity: qty,
+          currency,
+        })
+      }
     } catch (err) {
       await refreshCart().catch(() => {})
       throw err
     }
-  }, [country, refreshCart, user?.email])
+  }, [country, currency, refreshCart, user?.email])
 
   const removeFromCart = useCallback(async (itemId) => {
     await api(`/api/cart/items/${itemId}`, { method: 'DELETE' })
