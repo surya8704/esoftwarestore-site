@@ -1,5 +1,5 @@
-import { Product } from '../db/models.js'
-import { buildBingShoppingFeed, buildGoogleShoppingFeed, buildYandexFeed } from '../services/feeds.js'
+import { Product, ProductVariant } from '../db/models.js'
+import { buildBingShoppingFeed, buildGoogleShoppingFeed, buildMetaCatalogCsv, buildYandexFeed } from '../services/feeds.js'
 
 export async function feedRoutes(app) {
   app.get('/feeds/google-shopping.xml', async (request, reply) => {
@@ -21,6 +21,21 @@ export async function feedRoutes(app) {
     const catalog = await Product.find({ active: true })
     reply.type('application/xml')
     return buildYandexFeed(catalog, { currency })
+  })
+
+  app.get('/feeds/meta-catalog.csv', async (request, reply) => {
+    const currency = String(request.query.currency ?? 'USD').toUpperCase()
+    const products = await Product.find({ active: true }).sort({ name: 1 }).lean()
+    const variants = await ProductVariant.find({ active: { $ne: false } }).lean()
+    const variantsByProductId = new Map()
+    for (const variant of variants) {
+      const key = String(variant.productId)
+      if (!variantsByProductId.has(key)) variantsByProductId.set(key, [])
+      variantsByProductId.get(key).push(variant)
+    }
+    reply.type('text/csv; charset=utf-8')
+    reply.header('Content-Disposition', 'attachment; filename="meta-product-catalog.csv"')
+    return buildMetaCatalogCsv(products, variantsByProductId, { currency })
   })
 
   app.get('/sitemap.xml', async (_request, reply) => {

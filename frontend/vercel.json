@@ -13,7 +13,7 @@
       "destination": "/api/apple-domain"
     },
     {
-      "source": "/((?!assets/|\\.well-known/).*)",
+      "source": "/((?!assets/|\\.well-known/|meta-product-catalog\\.csv).*)",
       "destination": "/index.html"
     }
   ],
@@ -36,6 +36,14 @@
       "headers": [
         { "key": "Content-Type", "value": "text/plain" },
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/meta-product-catalog.csv",
+      "headers": [
+        { "key": "Content-Type", "value": "text/csv; charset=utf-8" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"meta-product-catalog.csv\"" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
     }
   ]
